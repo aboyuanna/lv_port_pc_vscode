@@ -154,20 +154,14 @@ static void bsp_display_unlock(void)
 #define CONTRAL_PAGE_WIDTH 720  // 控制页面宽度
 #define CONTRAL_PAGE_HEIGHT 620 // 控制页面高度
 
-#define SHOW_OBJ_WIDTH 650  // 控制页面宽度
-#define SHOW_OBJ_HEIGHT 490 // 控制页面高度
+#define GRID_SIZE 150
+#define GRID_SPACING 20
 
-#define ROW_WIDTH 660  // 显示部件行宽度
-#define ROW_HEIGHT 160 // 显示部件行高度
+#define SHOW_OBJ_WIDTH (GRID_SIZE * 4 + GRID_SPACING * 3)
+#define SHOW_OBJ_HEIGHT (GRID_SIZE * 3 + GRID_SPACING * 2)
 
 #define AREA_BG_COLOR lv_color_hex(0x101010) // 部件区域背景颜色
 // #define AREA_BG_COLOR lv_color_hex(0x000000) // 部件区域背景颜色
-
-#define CONTRAL_SWITCH_WIDTH 120  // 图标开关宽度
-#define CONTRAL_SWITCH_HEIGHT 120 // 图标开关高度
-
-#define CURTAIN_SLIDER_WIDTH 150             // 窗帘 滑块存放部件宽度
-#define CURTAIN_SLIDER_HEIGHT ROW_HEIGHT * 2 // 窗帘 滑块存放部件高度
 
 #define TIP_BAR_WIDTH 700 // 圆形提示栏宽度
 #define TIP_BAR_HEIGHT 30 // 圆形提示栏高度
@@ -175,7 +169,7 @@ static void bsp_display_unlock(void)
 #define CONTROL_WIDGET_ROWS 3 // 部件显示行数
 #define CONTROL_WIDGET_COLS 4 // 部件显示列数
 
-#define OPEN_STATE_DEFAULT_COLOR lv_color_hex(0xFFFFFF)  // 图标打开状态颜色
+#define OPEN_STATE_DEFAULT_COLOR lv_color_hex(0xDDDDDD)  // 图标打开状态颜色
 #define CLOSE_STATE_DEFAULT_COLOR lv_color_hex(0x202020) // 图标关闭状态颜色
 
 enum
@@ -457,6 +451,20 @@ static thermostat_t *add_thermostat_node(void)
   return node;
 }
 
+static void set_circle_switch_style(lv_obj_t *switch_btn, lv_obj_t *switch_img, lv_color_t icon_color, lv_color_t bg_color)
+{
+  if (switch_btn == NULL)
+  {
+    return;
+  }
+  if (switch_img != NULL)
+  {
+    lv_obj_set_style_img_recolor(switch_img, icon_color, LV_STATE_DEFAULT);
+    lv_obj_set_style_img_recolor_opa(switch_img, LV_OPA_COVER, LV_STATE_DEFAULT);
+  }
+  lv_obj_set_style_bg_color(switch_btn, bg_color, LV_STATE_DEFAULT);
+}
+
 /*********************************************控制页面图标开关状态切换事件回调函数************************************************/
 static void update_switch_imgbtn_status(device_node_t *device)
 {
@@ -476,19 +484,14 @@ static void update_switch_imgbtn_status(device_node_t *device)
     color = lv_color_hex(0x00FF00);
   }
 
+  lv_obj_t *switch_img = lv_obj_get_child(device->img_switch->switch_imgbtn, 0);
   if (device->img_switch->status == 1) // 设置为打开状态
   {
-    lv_obj_add_state(device->img_switch->switch_imgbtn, LV_STATE_CHECKED);
-    lv_obj_set_style_img_recolor(device->img_switch->switch_imgbtn, color, LV_STATE_DEFAULT);
-    lv_obj_set_style_img_recolor_opa(device->img_switch->switch_imgbtn, 255, LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(lv_obj_get_parent(device->img_switch->switch_imgbtn), OPEN_STATE_DEFAULT_COLOR, 0);
+    set_circle_switch_style(device->img_switch->switch_imgbtn, switch_img, color, OPEN_STATE_DEFAULT_COLOR);
   }
   else if (device->img_switch->status == 0) // 设置为关闭状态
   {
-    lv_obj_clear_state(device->img_switch->switch_imgbtn, LV_STATE_CHECKED);
-    lv_obj_set_style_img_recolor(device->img_switch->switch_imgbtn, OPEN_STATE_DEFAULT_COLOR, LV_STATE_DEFAULT);
-    lv_obj_set_style_img_recolor_opa(device->img_switch->switch_imgbtn, 255, LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(lv_obj_get_parent(device->img_switch->switch_imgbtn), CLOSE_STATE_DEFAULT_COLOR, 0);
+    set_circle_switch_style(device->img_switch->switch_imgbtn, switch_img, OPEN_STATE_DEFAULT_COLOR, CLOSE_STATE_DEFAULT_COLOR);
   }
   bsp_display_unlock();
 }
@@ -506,7 +509,7 @@ static void contral_page_switch_imgbtn_click_cb(lv_event_t *e)
   {
     return;
   }
-  if (lv_obj_has_state(switch_imgbtn, LV_STATE_CHECKED)) // 当前为打开状态 切换为关闭状态
+  if (device->img_switch->status == 1) // 当前为打开状态 切换为关闭状态
   {
     device->img_switch->status = 0;
   }
@@ -583,41 +586,22 @@ static void update_curtain_imgbtn_status(device_node_t *device)
     return;
   }
   bsp_display_lock(0);
+  lv_obj_t *up_img = lv_obj_get_child(device->curtain_switch->up_imgbtn, 0);
+  lv_obj_t *down_img = lv_obj_get_child(device->curtain_switch->down_imgbtn, 0);
   if (device->curtain_switch->status == 0)
   {
-    lv_obj_clear_state(device->curtain_switch->up_imgbtn, LV_STATE_CHECKED);
-    lv_obj_set_style_img_recolor(device->curtain_switch->up_imgbtn, OPEN_STATE_DEFAULT_COLOR, LV_STATE_DEFAULT);
-    lv_obj_set_style_img_recolor_opa(device->curtain_switch->up_imgbtn, 255, LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(lv_obj_get_parent(device->curtain_switch->up_imgbtn), CLOSE_STATE_DEFAULT_COLOR, 0);
-
-    lv_obj_add_state(device->curtain_switch->down_imgbtn, LV_STATE_CHECKED);
-    lv_obj_set_style_img_recolor(device->curtain_switch->down_imgbtn, CLOSE_STATE_DEFAULT_COLOR, LV_STATE_DEFAULT);
-    lv_obj_set_style_img_recolor_opa(device->curtain_switch->down_imgbtn, 255, LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(lv_obj_get_parent(device->curtain_switch->down_imgbtn), OPEN_STATE_DEFAULT_COLOR, 0);
+    set_circle_switch_style(device->curtain_switch->up_imgbtn, up_img, OPEN_STATE_DEFAULT_COLOR, CLOSE_STATE_DEFAULT_COLOR);
+    set_circle_switch_style(device->curtain_switch->down_imgbtn, down_img, CLOSE_STATE_DEFAULT_COLOR, OPEN_STATE_DEFAULT_COLOR);
   }
   else if (device->curtain_switch->status == 100)
   {
-    lv_obj_add_state(device->curtain_switch->up_imgbtn, LV_STATE_CHECKED);
-    lv_obj_set_style_img_recolor(device->curtain_switch->up_imgbtn, CLOSE_STATE_DEFAULT_COLOR, LV_STATE_DEFAULT);
-    lv_obj_set_style_img_recolor_opa(device->curtain_switch->up_imgbtn, 255, LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(lv_obj_get_parent(device->curtain_switch->up_imgbtn), OPEN_STATE_DEFAULT_COLOR, 0);
-
-    lv_obj_clear_state(device->curtain_switch->down_imgbtn, LV_STATE_CHECKED);
-    lv_obj_set_style_img_recolor(device->curtain_switch->down_imgbtn, OPEN_STATE_DEFAULT_COLOR, LV_STATE_DEFAULT);
-    lv_obj_set_style_img_recolor_opa(device->curtain_switch->down_imgbtn, 255, LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(lv_obj_get_parent(device->curtain_switch->down_imgbtn), CLOSE_STATE_DEFAULT_COLOR, 0);
+    set_circle_switch_style(device->curtain_switch->up_imgbtn, up_img, CLOSE_STATE_DEFAULT_COLOR, OPEN_STATE_DEFAULT_COLOR);
+    set_circle_switch_style(device->curtain_switch->down_imgbtn, down_img, OPEN_STATE_DEFAULT_COLOR, CLOSE_STATE_DEFAULT_COLOR);
   }
   else
   {
-    lv_obj_clear_state(device->curtain_switch->up_imgbtn, LV_STATE_CHECKED);
-    lv_obj_set_style_img_recolor(device->curtain_switch->up_imgbtn, OPEN_STATE_DEFAULT_COLOR, LV_STATE_DEFAULT);
-    lv_obj_set_style_img_recolor_opa(device->curtain_switch->up_imgbtn, 255, LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(lv_obj_get_parent(device->curtain_switch->up_imgbtn), CLOSE_STATE_DEFAULT_COLOR, 0);
-
-    lv_obj_clear_state(device->curtain_switch->down_imgbtn, LV_STATE_CHECKED);
-    lv_obj_set_style_img_recolor(device->curtain_switch->down_imgbtn, OPEN_STATE_DEFAULT_COLOR, LV_STATE_DEFAULT);
-    lv_obj_set_style_img_recolor_opa(device->curtain_switch->down_imgbtn, 255, LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(lv_obj_get_parent(device->curtain_switch->down_imgbtn), CLOSE_STATE_DEFAULT_COLOR, 0);
+    set_circle_switch_style(device->curtain_switch->up_imgbtn, up_img, OPEN_STATE_DEFAULT_COLOR, CLOSE_STATE_DEFAULT_COLOR);
+    set_circle_switch_style(device->curtain_switch->down_imgbtn, down_img, OPEN_STATE_DEFAULT_COLOR, CLOSE_STATE_DEFAULT_COLOR);
   }
   bsp_display_unlock();
 }
@@ -1301,27 +1285,27 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
   // 创建存放容器
   lv_obj_t *show_page_obj = lv_obj_create(contral_page_obj);
   lv_obj_set_size(show_page_obj, SHOW_OBJ_WIDTH, SHOW_OBJ_HEIGHT);
-  lv_obj_align(show_page_obj, LV_ALIGN_BOTTOM_MID, 0, -35);
-  lv_obj_set_style_bg_color(show_page_obj, AREA_BG_COLOR, 0);
+  lv_obj_align(show_page_obj, LV_ALIGN_BOTTOM_MID, 0, -30);
+  lv_obj_set_style_bg_color(show_page_obj, lv_color_black(), 0);
   lv_obj_set_style_border_width(show_page_obj, 0, 0);
   lv_obj_set_style_radius(show_page_obj, 35, 0);
   lv_obj_set_scrollbar_mode(show_page_obj, LV_SCROLLBAR_MODE_OFF);
   lv_obj_remove_flag(show_page_obj, LV_OBJ_FLAG_SCROLLABLE);
 
   static lv_coord_t col_dsc[] = {
-      150, 150, 150, 150, // 4列固定宽度
+      GRID_SIZE, GRID_SIZE, GRID_SIZE, GRID_SIZE, // 4列固定宽度
       LV_GRID_TEMPLATE_LAST};
 
   static lv_coord_t row_dsc[] = {
-      150, 150, 150, // 3行固定高度
+      GRID_SIZE, GRID_SIZE, GRID_SIZE, // 3行固定高度
       LV_GRID_TEMPLATE_LAST};
 
   lv_obj_set_grid_dsc_array(show_page_obj, col_dsc, row_dsc);
   lv_obj_set_layout(show_page_obj, LV_LAYOUT_GRID);
 
-  lv_obj_set_style_pad_all(show_page_obj, 10, 0);    // 容器内边距
-  lv_obj_set_style_pad_row(show_page_obj, 10, 0);    // 行间隙
-  lv_obj_set_style_pad_column(show_page_obj, 10, 0); // 列间隙
+  lv_obj_set_style_pad_all(show_page_obj, 0, 0);               // 容器内边距
+  lv_obj_set_style_pad_row(show_page_obj, GRID_SPACING, 0);    // 行间隙
+  lv_obj_set_style_pad_column(show_page_obj, GRID_SPACING, 0); // 列间隙
 
   bool grid_occupied[CONTROL_WIDGET_ROWS][CONTROL_WIDGET_COLS] = {false}; // 网格占用状态初始化
 
@@ -1351,24 +1335,26 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
           goto next_device;
         }
         // 开关图标存放背景部件
-        lv_obj_t *switch_obj = lv_obj_create(show_page_obj);
-        lv_obj_set_size(switch_obj, CONTRAL_SWITCH_WIDTH, CONTRAL_SWITCH_HEIGHT);
-        lv_obj_set_style_bg_color(switch_obj, CLOSE_STATE_DEFAULT_COLOR, 0);
+        lv_obj_t *switch_obj = lv_button_create(show_page_obj);
+        lv_obj_set_size(switch_obj, (GRID_SIZE - 10), (GRID_SIZE - 10));
         lv_obj_set_style_radius(switch_obj, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_opa(switch_obj, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(switch_obj, CLOSE_STATE_DEFAULT_COLOR, 0);
         lv_obj_set_style_border_width(switch_obj, 0, 0);
+        lv_obj_set_style_pad_all(switch_obj, 0, 0);
         lv_obj_remove_flag(switch_obj, LV_OBJ_FLAG_SCROLLABLE);
         // 开关图标
-        lv_obj_t *switch_icon = lv_imagebutton_create(switch_obj);
-        lv_imagebutton_set_src(switch_icon, LV_IMAGEBUTTON_STATE_RELEASED, NULL, device->img_switch->img_addr, NULL);
+        lv_obj_t *switch_icon = lv_image_create(switch_obj);
+        lv_obj_set_size(switch_icon, (GRID_SIZE - 10), (GRID_SIZE - 10));
+        lv_image_set_src(switch_icon, device->img_switch->img_addr);
         lv_obj_center(switch_icon);
         lv_obj_set_style_img_recolor(switch_icon, OPEN_STATE_DEFAULT_COLOR, 0);
-        lv_obj_set_style_img_recolor_opa(switch_icon, 255, LV_STATE_DEFAULT);
-        lv_obj_clear_state(switch_icon, LV_STATE_CHECKED);
-        lv_obj_add_event_cb(switch_icon, contral_page_switch_imgbtn_click_cb, LV_EVENT_CLICKED, device);
+        lv_obj_set_style_img_recolor_opa(switch_icon, LV_OPA_COVER, LV_STATE_DEFAULT);
+        lv_obj_add_event_cb(switch_obj, contral_page_switch_imgbtn_click_cb, LV_EVENT_CLICKED, device);
         // 设置网格单元格（1x1）
         lv_obj_set_grid_cell(switch_obj, LV_GRID_ALIGN_CENTER, col, 1, LV_GRID_ALIGN_CENTER, row, 1);
         mark_grid_occupied(1, 0, row, col, grid_occupied); // 标记网格占用状态
-        device->img_switch->switch_imgbtn = switch_icon;   // 赋值图标开关部件
+        device->img_switch->switch_imgbtn = switch_obj;    // 赋值图标开关部件
       }
       else if (device->device_type == DEVICE_TYPE_CURTAIN_SLIDER ||
                device->device_type == DEVICE_TYPE_RCU_DIMMING)
@@ -1384,7 +1370,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
         lv_obj_set_style_radius(slider, 35, LV_PART_MAIN);
         lv_obj_set_style_radius(slider, 35, LV_PART_INDICATOR);
         lv_obj_set_style_bg_color(slider, AREA_BG_COLOR, LV_PART_MAIN);
-        lv_obj_set_style_bg_color(slider, CLOSE_STATE_DEFAULT_COLOR, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(slider, OPEN_STATE_DEFAULT_COLOR, LV_PART_INDICATOR);
         lv_obj_set_style_bg_opa(slider, 255, LV_PART_MAIN);
         lv_obj_set_style_bg_opa(slider, 255, LV_PART_INDICATOR);
         lv_obj_remove_style(slider, NULL, LV_PART_KNOB);
@@ -1401,29 +1387,29 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
 
         if (device->angle == 0)
         {
-          lv_obj_set_size(slider, 310, 150);
-          lv_obj_align(slider_imgbtn, LV_ALIGN_CENTER, -110, 0);
+          lv_obj_set_size(slider, (GRID_SIZE * 2 + GRID_SPACING), GRID_SIZE);
+          lv_obj_align(slider_imgbtn, LV_ALIGN_CENTER, -100, 0);
           lv_obj_set_grid_cell(slider, LV_GRID_ALIGN_CENTER, col, 2, LV_GRID_ALIGN_CENTER, row, 1);
           mark_grid_occupied(2, device->angle, row, col, grid_occupied);
         }
         else if (device->angle == 1)
         {
-          lv_obj_set_size(slider, 150, 310);
-          lv_obj_align(slider_imgbtn, LV_ALIGN_CENTER, 0, -110);
+          lv_obj_set_size(slider, GRID_SIZE, (GRID_SIZE * 2 + GRID_SPACING));
+          lv_obj_align(slider_imgbtn, LV_ALIGN_CENTER, 0, -100);
           lv_obj_set_grid_cell(slider, LV_GRID_ALIGN_CENTER, col, 1, LV_GRID_ALIGN_CENTER, row, 2);
           mark_grid_occupied(2, device->angle, row, col, grid_occupied);
         }
         else if (device->angle == 2)
         {
-          lv_obj_set_size(slider, 310, 150);
-          lv_obj_align(slider_imgbtn, LV_ALIGN_CENTER, 110, 0);
+          lv_obj_set_size(slider, (GRID_SIZE * 2 + GRID_SPACING), GRID_SIZE);
+          lv_obj_align(slider_imgbtn, LV_ALIGN_CENTER, 100, 0);
           lv_obj_set_grid_cell(slider, LV_GRID_ALIGN_CENTER, col - 1, 2, LV_GRID_ALIGN_CENTER, row, 1);
           mark_grid_occupied(2, device->angle, row, col, grid_occupied);
         }
         else if (device->angle == 3)
         {
-          lv_obj_set_size(slider, 150, 310);
-          lv_obj_align(slider_imgbtn, LV_ALIGN_CENTER, 0, 110);
+          lv_obj_set_size(slider, GRID_SIZE, (GRID_SIZE * 2 + GRID_SPACING));
+          lv_obj_align(slider_imgbtn, LV_ALIGN_CENTER, 0, 100);
           lv_obj_set_grid_cell(slider, LV_GRID_ALIGN_CENTER, col, 1, LV_GRID_ALIGN_CENTER, row - 1, 2);
           mark_grid_occupied(2, device->angle, row, col, grid_occupied);
         }
@@ -1446,38 +1432,40 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
         lv_obj_remove_flag(curtain_obj, LV_OBJ_FLAG_SCROLLABLE);
 
         // 开关图标存放背景部件1
-        lv_obj_t *switch_obj1 = lv_obj_create(curtain_obj);
-        lv_obj_set_size(switch_obj1, CONTRAL_SWITCH_WIDTH, CONTRAL_SWITCH_HEIGHT);
-        lv_obj_set_style_bg_color(switch_obj1, CLOSE_STATE_DEFAULT_COLOR, 0);
+        lv_obj_t *switch_obj1 = lv_button_create(curtain_obj);
+        lv_obj_set_size(switch_obj1, (GRID_SIZE - 10), (GRID_SIZE - 10));
         lv_obj_set_style_radius(switch_obj1, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_opa(switch_obj1, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(switch_obj1, CLOSE_STATE_DEFAULT_COLOR, 0);
         lv_obj_set_style_border_width(switch_obj1, 0, 0);
+        lv_obj_set_style_pad_all(switch_obj1, 0, 0);
 
         // 开关图标1
-        lv_obj_t *switch_icon1 = lv_imagebutton_create(switch_obj1);
-        lv_imagebutton_set_src(switch_icon1, LV_IMAGEBUTTON_STATE_RELEASED, NULL, device->curtain_switch->down_img_addr, NULL);
+        lv_obj_t *switch_icon1 = lv_image_create(switch_obj1);
+        lv_image_set_src(switch_icon1, device->curtain_switch->down_img_addr);
         lv_obj_center(switch_icon1);
         lv_obj_set_size(switch_icon1, 60, 60);
         lv_obj_set_style_img_recolor(switch_icon1, OPEN_STATE_DEFAULT_COLOR, 0);
-        lv_obj_set_style_img_recolor_opa(switch_icon1, 255, LV_STATE_DEFAULT);
-        lv_obj_clear_state(switch_icon1, LV_STATE_CHECKED);
-        lv_obj_add_event_cb(switch_icon1, contral_page_curtain_imgbtn_click_cb, LV_EVENT_CLICKED, device);
+        lv_obj_set_style_img_recolor_opa(switch_icon1, LV_OPA_COVER, LV_STATE_DEFAULT);
+        lv_obj_add_event_cb(switch_obj1, contral_page_curtain_imgbtn_click_cb, LV_EVENT_CLICKED, device);
 
         // 开关图标存放背景部件2
-        lv_obj_t *switch_obj2 = lv_obj_create(curtain_obj);
-        lv_obj_set_size(switch_obj2, CONTRAL_SWITCH_WIDTH, CONTRAL_SWITCH_HEIGHT);
-        lv_obj_set_style_bg_color(switch_obj2, CLOSE_STATE_DEFAULT_COLOR, 0);
+        lv_obj_t *switch_obj2 = lv_button_create(curtain_obj);
+        lv_obj_set_size(switch_obj2, (GRID_SIZE - 10), (GRID_SIZE - 10));
         lv_obj_set_style_radius(switch_obj2, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_opa(switch_obj2, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(switch_obj2, CLOSE_STATE_DEFAULT_COLOR, 0);
         lv_obj_set_style_border_width(switch_obj2, 0, 0);
+        lv_obj_set_style_pad_all(switch_obj2, 0, 0);
 
         // 开关图标2
-        lv_obj_t *switch_icon2 = lv_imagebutton_create(switch_obj2);
-        lv_imagebutton_set_src(switch_icon2, LV_IMAGEBUTTON_STATE_RELEASED, NULL, device->curtain_switch->up_img_addr, NULL);
+        lv_obj_t *switch_icon2 = lv_image_create(switch_obj2);
+        lv_image_set_src(switch_icon2, device->curtain_switch->up_img_addr);
         lv_obj_center(switch_icon2);
         lv_obj_set_size(switch_icon2, 60, 60);
         lv_obj_set_style_img_recolor(switch_icon2, OPEN_STATE_DEFAULT_COLOR, 0);
-        lv_obj_set_style_img_recolor_opa(switch_icon2, 255, LV_STATE_DEFAULT);
-        lv_obj_clear_state(switch_icon2, LV_STATE_CHECKED);
-        lv_obj_add_event_cb(switch_icon2, contral_page_curtain_imgbtn_click_cb, LV_EVENT_CLICKED, device);
+        lv_obj_set_style_img_recolor_opa(switch_icon2, LV_OPA_COVER, LV_STATE_DEFAULT);
+        lv_obj_add_event_cb(switch_obj2, contral_page_curtain_imgbtn_click_cb, LV_EVENT_CLICKED, device);
 
         if (device->angle == 0)
         {
@@ -1512,8 +1500,8 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
           lv_obj_set_grid_cell(curtain_obj, LV_GRID_ALIGN_CENTER, col, 1, LV_GRID_ALIGN_CENTER, row - 1, 2);
         }
 
-        device->curtain_switch->up_imgbtn = switch_icon1;   // 赋值窗帘上图标部件
-        device->curtain_switch->down_imgbtn = switch_icon2; // 赋值窗帘下图标部件
+        device->curtain_switch->up_imgbtn = switch_obj1;   // 赋值窗帘上图标部件
+        device->curtain_switch->down_imgbtn = switch_obj2; // 赋值窗帘下图标部件
       }
       else if (device->device_type == DEVICE_TYPE_THERMOSTAT)
       {
@@ -1538,7 +1526,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
         device->thermostat->mode_support = 0;
 
         lv_obj_t *thermostat = lv_obj_create(show_page_obj);
-        lv_obj_set_size(thermostat, 470, 310);
+        lv_obj_set_size(thermostat, (GRID_SIZE * 3 + GRID_SPACING * 2), (GRID_SIZE * 2 + GRID_SPACING * 1));
         lv_obj_center(thermostat);
         lv_obj_set_style_bg_color(thermostat, AREA_BG_COLOR, 0);
         lv_obj_set_style_radius(thermostat, 35, 0);
@@ -1575,7 +1563,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
 
         /* 右侧按键容器：竖排 + 等间距 */
         lv_obj_t *right_btn_col = lv_obj_create(thermostat);
-        lv_obj_set_size(right_btn_col, 90, 270);
+        lv_obj_set_size(right_btn_col, 90, 300);
         lv_obj_align(right_btn_col, LV_ALIGN_RIGHT_MID, 0, 0);
         lv_obj_set_style_bg_opa(right_btn_col, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(right_btn_col, 0, 0);
@@ -1681,9 +1669,9 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
 
         update_thermostat_imgbtn_status(device);
 
-        lv_obj_set_size(thermostat, 470, 310);
-        // lv_obj_align(thermostat, LV_ALIGN_LEFT_MID, 3, 0);
-        // lv_obj_align(thermostat, LV_ALIGN_RIGHT_MID, -3, 0);
+        // lv_obj_set_size(thermostat, 470, 310);
+        //  lv_obj_align(thermostat, LV_ALIGN_LEFT_MID, 3, 0);
+        //  lv_obj_align(thermostat, LV_ALIGN_RIGHT_MID, -3, 0);
         mark_grid_occupied(6, device->angle, row, col, grid_occupied);
         lv_obj_set_grid_cell(thermostat, LV_GRID_ALIGN_CENTER, col, 3, LV_GRID_ALIGN_CENTER, row, 2);
       }
