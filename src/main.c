@@ -175,6 +175,14 @@ static void bsp_display_unlock(void)
 #define OPEN_STATE_DEFAULT_COLOR lv_color_hex(0xDDDDDD)  // 图标打开状态颜色
 #define CLOSE_STATE_DEFAULT_COLOR lv_color_hex(0x202020) // 图标关闭状态颜色
 
+typedef enum
+{
+  GRID_TYPE_1X1 = 1,
+  GRID_TYPE_1X2_OR_2X1 = 2,
+  GRID_TYPE_2X2 = 4,
+  GRID_TYPE_3X2 = 6
+} grid_type_t;
+
 enum
 {
   DEVICE_TYPE_UNKNOW = 0,
@@ -1262,18 +1270,18 @@ static void contral_page_thermostat_imgbtn_click_cb(lv_event_t *e)
  * @param start_col 起始列
  * @return true表示可以放置，false表示不能放置
  */
-static bool can_place_widget(uint8_t grid, uint8_t angle, uint8_t start_row, uint8_t start_col, bool grid_occupied[][CONTROL_WIDGET_COLS])
+static bool can_place_widget(grid_type_t grid, uint8_t angle, uint8_t start_row, uint8_t start_col, bool grid_occupied[][CONTROL_WIDGET_COLS])
 {
   // 检查边界条件
   if (start_row >= CONTROL_WIDGET_ROWS || start_col >= CONTROL_WIDGET_COLS)
     return false;
 
-  if (grid == 1) // 占用1格
+  if (grid == GRID_TYPE_1X1) // 占用1格
   {
     // 按钮占用1格，只需检查当前单元格
     return !grid_occupied[start_row][start_col];
   }
-  else if (grid == 2) // 占用2格
+  else if (grid == GRID_TYPE_1X2_OR_2X1) // 占用2格
   {
     if (angle == 0) // 占用1x2，检查当前行连续两列
     {
@@ -1304,7 +1312,7 @@ static bool can_place_widget(uint8_t grid, uint8_t angle, uint8_t start_row, uin
              !grid_occupied[start_row - 1][start_col];
     }
   }
-  else if (grid == 4) // 占用4格
+  else if (grid == GRID_TYPE_2X2) // 占用4格
   {
     if (start_row + 1 >= CONTROL_WIDGET_ROWS || start_col + 1 >= CONTROL_WIDGET_COLS)
     {
@@ -1315,7 +1323,7 @@ static bool can_place_widget(uint8_t grid, uint8_t angle, uint8_t start_row, uin
            !grid_occupied[start_row + 1][start_col] &&
            !grid_occupied[start_row + 1][start_col + 1];
   }
-  else if (grid == 6) // 占用6格
+  else if (grid == GRID_TYPE_3X2) // 占用6格
   {
     if (start_row + 1 >= CONTROL_WIDGET_ROWS || start_col + 2 >= CONTROL_WIDGET_COLS)
     {
@@ -1337,14 +1345,14 @@ static bool can_place_widget(uint8_t grid, uint8_t angle, uint8_t start_row, uin
  * @param start_row 起始行
  * @param start_col 起始列
  */
-static void mark_grid_occupied(uint8_t grid, uint8_t angle, int start_row, int start_col, bool grid_occupied[][CONTROL_WIDGET_COLS])
+static void mark_grid_occupied(grid_type_t grid, uint8_t angle, int start_row, int start_col, bool grid_occupied[][CONTROL_WIDGET_COLS])
 {
   switch (grid)
   {
-  case 1:
+  case GRID_TYPE_1X1:
     grid_occupied[start_row][start_col] = true;
     break;
-  case 2:
+  case GRID_TYPE_1X2_OR_2X1:
     if (angle == 0)
     {
       grid_occupied[start_row][start_col] = true;
@@ -1370,13 +1378,13 @@ static void mark_grid_occupied(uint8_t grid, uint8_t angle, int start_row, int s
       break;
     }
     break;
-  case 4:
+  case GRID_TYPE_2X2:
     grid_occupied[start_row][start_col] = true;
     grid_occupied[start_row][start_col + 1] = true;
     grid_occupied[start_row + 1][start_col] = true;
     grid_occupied[start_row + 1][start_col + 1] = true;
     break;
-  case 6:
+  case GRID_TYPE_3X2:
     grid_occupied[start_row][start_col] = true;
     grid_occupied[start_row][start_col + 1] = true;
     grid_occupied[start_row][start_col + 2] = true;
@@ -1459,7 +1467,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
   device_node_t *device = device_node_list;
   while (device != NULL)
   {
-    if (device->page_index == page_index + 1)
+    if (device->page_index == page_index)
     {
       int row = (device->show_index - 1) / CONTROL_WIDGET_COLS; // 计算行列位置 索引从0开始
       int col = (device->show_index - 1) % CONTROL_WIDGET_COLS;
@@ -1476,7 +1484,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
           device->device_type == DEVICE_TYPE_RCU_VIRTUAL ||
           device->device_type == DEVICE_TYPE_RCU_SCENE)
       {
-        if (!can_place_widget(1, device->angle, row, col, grid_occupied))
+        if (!can_place_widget(GRID_TYPE_1X1, device->angle, row, col, grid_occupied))
         {
           printf("can not found local");
           goto next_device;
@@ -1501,13 +1509,13 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
         lv_obj_add_event_cb(switch_obj, contral_page_switch_imgbtn_click_cb, LV_EVENT_CLICKED, device);
         // 设置网格单元格（1x1）
         lv_obj_set_grid_cell(switch_obj, LV_GRID_ALIGN_CENTER, col, 1, LV_GRID_ALIGN_CENTER, row, 1);
-        mark_grid_occupied(1, 0, row, col, grid_occupied); // 标记网格占用状态
-        device->img_switch->switch_imgbtn = switch_obj;    // 赋值图标开关部件
+        mark_grid_occupied(GRID_TYPE_1X1, 0, row, col, grid_occupied); // 标记网格占用状态
+        device->img_switch->switch_imgbtn = switch_obj;                // 赋值图标开关部件
       }
       else if (device->device_type == DEVICE_TYPE_CURTAIN_SLIDER ||
                device->device_type == DEVICE_TYPE_RCU_DIMMING)
       {
-        if (!can_place_widget(2, device->angle, row, col, grid_occupied))
+        if (!can_place_widget(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied))
         {
           printf("can not found local");
           goto next_device;
@@ -1536,37 +1544,37 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
         if (device->angle == 0)
         {
           lv_obj_set_size(slider, (GRID_SIZE * 2 + GRID_SPACING), GRID_SIZE);
-          lv_obj_align(slider_imgbtn, LV_ALIGN_CENTER, -100, 0);
+          lv_obj_align(slider_imgbtn, LV_ALIGN_LEFT_MID, 5, 0);
           lv_obj_set_grid_cell(slider, LV_GRID_ALIGN_CENTER, col, 2, LV_GRID_ALIGN_CENTER, row, 1);
-          mark_grid_occupied(2, device->angle, row, col, grid_occupied);
+          mark_grid_occupied(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied);
         }
         else if (device->angle == 1)
         {
           lv_obj_set_size(slider, GRID_SIZE, (GRID_SIZE * 2 + GRID_SPACING));
-          lv_obj_align(slider_imgbtn, LV_ALIGN_CENTER, 0, -100);
+          lv_obj_align(slider_imgbtn, LV_ALIGN_TOP_MID, 0, 5);
           lv_obj_set_grid_cell(slider, LV_GRID_ALIGN_CENTER, col, 1, LV_GRID_ALIGN_CENTER, row, 2);
-          mark_grid_occupied(2, device->angle, row, col, grid_occupied);
+          mark_grid_occupied(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied);
         }
         else if (device->angle == 2)
         {
           lv_obj_set_size(slider, (GRID_SIZE * 2 + GRID_SPACING), GRID_SIZE);
-          lv_obj_align(slider_imgbtn, LV_ALIGN_CENTER, 100, 0);
+          lv_obj_align(slider_imgbtn, LV_ALIGN_RIGHT_MID, -5, 0);
           lv_obj_set_grid_cell(slider, LV_GRID_ALIGN_CENTER, col - 1, 2, LV_GRID_ALIGN_CENTER, row, 1);
-          mark_grid_occupied(2, device->angle, row, col, grid_occupied);
+          mark_grid_occupied(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied);
         }
         else if (device->angle == 3)
         {
           lv_obj_set_size(slider, GRID_SIZE, (GRID_SIZE * 2 + GRID_SPACING));
-          lv_obj_align(slider_imgbtn, LV_ALIGN_CENTER, 0, 100);
+          lv_obj_align(slider_imgbtn, LV_ALIGN_BOTTOM_MID, 0, -5);
           lv_obj_set_grid_cell(slider, LV_GRID_ALIGN_CENTER, col, 1, LV_GRID_ALIGN_CENTER, row - 1, 2);
-          mark_grid_occupied(2, device->angle, row, col, grid_occupied);
+          mark_grid_occupied(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied);
         }
         device->dimmer_slider->slider_obj = slider;           // 赋值滑块部件
         device->dimmer_slider->slider_imgbtn = slider_imgbtn; // 赋值滑块图标部件
       }
       else if (device->device_type == DEVICE_TYPE_CURTAIN_SWITCH)
       {
-        if (!can_place_widget(2, device->angle, row, col, grid_occupied))
+        if (!can_place_widget(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied))
         {
           printf("can not found local");
           goto next_device;
@@ -1622,7 +1630,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
           lv_obj_set_size(curtain_obj, 310, 150);
           lv_obj_align(switch_obj1, LV_ALIGN_LEFT_MID, 3, 0);
           lv_obj_align(switch_obj2, LV_ALIGN_RIGHT_MID, -3, 0);
-          mark_grid_occupied(2, device->angle, row, col, grid_occupied);
+          mark_grid_occupied(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied);
           lv_obj_set_grid_cell(curtain_obj, LV_GRID_ALIGN_CENTER, col, 2, LV_GRID_ALIGN_CENTER, row, 1);
         }
         else if (device->angle == 1)
@@ -1630,7 +1638,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
           lv_obj_set_size(curtain_obj, 150, 310);
           lv_obj_align(switch_obj1, LV_ALIGN_TOP_MID, 0, 3);
           lv_obj_align(switch_obj2, LV_ALIGN_BOTTOM_MID, 0, -3);
-          mark_grid_occupied(2, device->angle, row, col, grid_occupied);
+          mark_grid_occupied(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied);
           lv_obj_set_grid_cell(curtain_obj, LV_GRID_ALIGN_CENTER, col, 1, LV_GRID_ALIGN_CENTER, row, 2);
         }
         else if (device->angle == 2)
@@ -1638,7 +1646,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
           lv_obj_set_size(curtain_obj, 310, 150);
           lv_obj_align(switch_obj2, LV_ALIGN_LEFT_MID, 3, 0);
           lv_obj_align(switch_obj1, LV_ALIGN_RIGHT_MID, -3, 0);
-          mark_grid_occupied(2, device->angle, row, col, grid_occupied);
+          mark_grid_occupied(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied);
           lv_obj_set_grid_cell(curtain_obj, LV_GRID_ALIGN_CENTER, col - 1, 2, LV_GRID_ALIGN_CENTER, row, 1);
         }
         else if (device->angle == 3)
@@ -1646,7 +1654,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
           lv_obj_set_size(curtain_obj, 150, 310);
           lv_obj_align(switch_obj2, LV_ALIGN_TOP_MID, 0, 3);
           lv_obj_align(switch_obj1, LV_ALIGN_BOTTOM_MID, 0, -3);
-          mark_grid_occupied(2, device->angle, row, col, grid_occupied);
+          mark_grid_occupied(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied);
           lv_obj_set_grid_cell(curtain_obj, LV_GRID_ALIGN_CENTER, col, 1, LV_GRID_ALIGN_CENTER, row - 1, 2);
         }
 
@@ -1655,11 +1663,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
       }
       else if (device->device_type == DEVICE_TYPE_BT_BOX)
       {
-        if (device->bt_box == NULL)
-        {
-          goto next_device;
-        }
-        if (!can_place_widget(4, device->angle, row, col, grid_occupied))
+        if (!can_place_widget(GRID_TYPE_2X2, device->angle, row, col, grid_occupied))
         {
           printf("can not found local");
           goto next_device;
@@ -1692,7 +1696,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
         lv_obj_t *volume_img = lv_image_create(volume_slider);
         lv_obj_set_size(volume_img, 64, 64);
         lv_image_set_src(volume_img, volume_pic);
-        lv_obj_align(volume_img, LV_ALIGN_CENTER, -100, 0);
+        lv_obj_align(volume_img, LV_ALIGN_LEFT_MID, 5, 0);
 
         lv_obj_t *info_row = lv_obj_create(bt_box);
         lv_obj_set_size(info_row, bt_slider_w, bt_slider_h);
@@ -1734,12 +1738,12 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
         device->bt_box->password_label = password_label;
         update_bt_box_status(device);
 
-        mark_grid_occupied(4, device->angle, row, col, grid_occupied);
+        mark_grid_occupied(GRID_TYPE_2X2, device->angle, row, col, grid_occupied);
         lv_obj_set_grid_cell(bt_box, LV_GRID_ALIGN_CENTER, col, 2, LV_GRID_ALIGN_CENTER, row, 2);
       }
       else if (device->device_type == DEVICE_TYPE_THERMOSTAT)
       {
-        if (!can_place_widget(6, device->angle, row, col, grid_occupied))
+        if (!can_place_widget(GRID_TYPE_3X2, device->angle, row, col, grid_occupied))
         {
           printf("can not found local");
           goto next_device;
@@ -1909,7 +1913,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
         // lv_obj_set_size(thermostat, 470, 310);
         //  lv_obj_align(thermostat, LV_ALIGN_LEFT_MID, 3, 0);
         //  lv_obj_align(thermostat, LV_ALIGN_RIGHT_MID, -3, 0);
-        mark_grid_occupied(6, device->angle, row, col, grid_occupied);
+        mark_grid_occupied(GRID_TYPE_3X2, device->angle, row, col, grid_occupied);
         lv_obj_set_grid_cell(thermostat, LV_GRID_ALIGN_CENTER, col, 3, LV_GRID_ALIGN_CENTER, row, 2);
       }
     }
@@ -1987,8 +1991,26 @@ static void create_contral_page(void)
   device->angle = 0;
   device->bt_box = (bt_box_t *)add_bt_box_node();
 
-  create_one_contral_page("Living Room", 0);
-  create_one_contral_page("Media Room", 1);
+  device = add_deivce_node();
+  device->slot = 0x89;
+  device->gang = 0x02;
+  device->device_type = DEVICE_TYPE_RCU_DIMMING;
+  device->page_index = 2;
+  device->show_index = 3;
+  device->angle = 1;
+  device->dimmer_slider = (dimmer_slider_t *)add_dimmer_slider_node(power_pic);
+
+  device = add_deivce_node();
+  device->slot = 0x89;
+  device->gang = 0x02;
+  device->device_type = DEVICE_TYPE_RCU_DIMMING;
+  device->page_index = 2;
+  device->show_index = 8;
+  device->angle = 3;
+  device->dimmer_slider = (dimmer_slider_t *)add_dimmer_slider_node(power_pic);
+
+  create_one_contral_page("Living Room", 1);
+  create_one_contral_page("Media Room", 2);
   /*
   if (contral_page_tileview)
   {
