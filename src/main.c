@@ -41,7 +41,7 @@
 // LV_FONT_DECLARE(my_equalwidth_font16);
 LV_FONT_DECLARE(my_equalwidth_font20);
 // LV_FONT_DECLARE(my_equalwidth_font24);
-LV_FONT_DECLARE(my_equalwidth_font32);
+// LV_FONT_DECLARE(my_equalwidth_font32);
 LV_FONT_DECLARE(my_equalwidth_font48);
 LV_FONT_DECLARE(my_equalwidth_font64);
 LV_FONT_DECLARE(equalwidth_128);
@@ -120,11 +120,17 @@ static const char *fanA_pic = IMG_SRC("fanA.png");
 static const char *heating_pic = IMG_SRC("heating.png");
 static const char *humidity_pic = IMG_SRC("humidity.png");
 static const char *bluetooth_pic = IMG_SRC("bluetooth.png");
+static const char *answer_pic = IMG_SRC("answer.png");
+static const char *call_service_pic = IMG_SRC("call_service .png");
+static const char *phone_call_pic = IMG_SRC("phone_call.png");
+static const char *backspace_pic = IMG_SRC("backspace.png");
+static const char *clean_pic = IMG_SRC("clean.png");
 static const char *power_pic = IMG_SRC("power.png");
 static const char *temperature_pic = IMG_SRC("temperature.png");
 static const char *tv_pic = IMG_SRC("tv.png");
 static const char *volume_pic = IMG_SRC("volume.png");
 static const char *wind_big_pic = IMG_SRC("wind_big.png");
+static const char *dnd_pic = IMG_SRC("dnd.png");
 
 static void ble_slave_cmd_post_to_eventLoop(uint8_t *cmd, uint8_t len, uint32_t event)
 {
@@ -163,8 +169,7 @@ static void bsp_display_unlock(void)
 #define SHOW_OBJ_WIDTH (GRID_SIZE * 4 + GRID_SPACING * 3)
 #define SHOW_OBJ_HEIGHT (GRID_SIZE * 3 + GRID_SPACING * 2)
 
-#define AREA_BG_COLOR lv_color_hex(0x101010) // 部件区域背景颜色
-// #define AREA_BG_COLOR lv_color_hex(0x000000) // 部件区域背景颜色
+#define AREA_BG_COLOR lv_color_hex(0x202020) // 部件区域背景颜色
 
 #define TIP_BAR_WIDTH 700 // 圆形提示栏宽度
 #define TIP_BAR_HEIGHT 30 // 圆形提示栏高度
@@ -172,8 +177,10 @@ static void bsp_display_unlock(void)
 #define CONTROL_WIDGET_ROWS 3 // 部件显示行数
 #define CONTROL_WIDGET_COLS 4 // 部件显示列数
 
-#define OPEN_STATE_DEFAULT_COLOR lv_color_hex(0xDDDDDD)  // 图标打开状态颜色
-#define CLOSE_STATE_DEFAULT_COLOR lv_color_hex(0x202020) // 图标关闭状态颜色
+#define OPEN_STATE_DEFAULT_COLOR lv_color_hex(0xE0E0E0)  // 图标打开状态颜色
+#define CLOSE_STATE_DEFAULT_COLOR lv_color_hex(0x404040) // 图标关闭状态颜色
+#define CLEAN_ON_COLOR lv_color_hex(0x00FF00)            // clean开启按钮颜色
+#define DND_ON_COLOR lv_color_hex(0xFF0000)              // dnd开启按钮颜色
 
 typedef enum
 {
@@ -197,6 +204,7 @@ enum
   DEVICE_TYPE_CURTAIN_SLIDER,
   DEVICE_TYPE_THERMOSTAT,
   DEVICE_TYPE_BT_BOX,
+  DEVICE_TYPE_CLEAN_DND,
 };
 
 // 图标开关
@@ -272,6 +280,16 @@ typedef struct bt_box
   lv_obj_t *password_label;
 } bt_box_t;
 
+typedef struct clean_dnd
+{
+  bool clean_on;
+  bool dnd_on;
+  lv_obj_t *clean_btn;
+  lv_obj_t *dnd_btn;
+  lv_obj_t *clean_label;
+  lv_obj_t *dnd_label;
+} clean_dnd_t;
+
 typedef struct device_node
 {
   uint8_t macAddress[6];
@@ -290,6 +308,7 @@ typedef struct device_node
     curtain_switch_t *curtain_switch;
     thermostat_t *thermostat;
     bt_box_t *bt_box;
+    clean_dnd_t *clean_dnd;
   };
   struct device_node *next; // 链表后继
 } device_node_t;
@@ -480,6 +499,17 @@ static bt_box_t *add_bt_box_node(void)
 {
   bt_box_t *node = (bt_box_t *)malloc(sizeof(bt_box_t));
   memset(node, 0, sizeof(bt_box_t));
+  return node;
+}
+
+static clean_dnd_t *add_clean_dnd_node(void)
+{
+  clean_dnd_t *node = (clean_dnd_t *)malloc(sizeof(clean_dnd_t));
+  if (node == NULL)
+  {
+    return NULL;
+  }
+  memset(node, 0, sizeof(clean_dnd_t));
   return node;
 }
 
@@ -703,6 +733,95 @@ static void contral_page_curtain_imgbtn_click_cb(lv_event_t *e)
     cmd[16] = device->curtain_switch->status;
     ble_slave_cmd_post_to_eventLoop(cmd, 17, EVENT_CMD_FROM_APP);
   }
+}
+
+static void update_clean_dnd_status(device_node_t *device)
+{
+  if (device == NULL || device->clean_dnd == NULL)
+  {
+    return;
+  }
+
+  bsp_display_lock(0);
+
+  if (device->clean_dnd->clean_btn != NULL && device->clean_dnd->dnd_btn != NULL)
+  {
+    if (device->clean_dnd->clean_on)
+    {
+      lv_obj_set_style_bg_color(device->clean_dnd->clean_btn, OPEN_STATE_DEFAULT_COLOR, 0);
+      if (device->clean_dnd->clean_label != NULL)
+      {
+        lv_obj_set_style_img_recolor(device->clean_dnd->clean_label, CLEAN_ON_COLOR, 0);
+        lv_obj_set_style_img_recolor_opa(device->clean_dnd->clean_label, LV_OPA_COVER, 0);
+      }
+    }
+    else
+    {
+      lv_obj_set_style_bg_color(device->clean_dnd->clean_btn, CLOSE_STATE_DEFAULT_COLOR, 0);
+      if (device->clean_dnd->clean_label != NULL)
+      {
+        lv_obj_set_style_img_recolor(device->clean_dnd->clean_label, OPEN_STATE_DEFAULT_COLOR, 0);
+        lv_obj_set_style_img_recolor_opa(device->clean_dnd->clean_label, LV_OPA_COVER, 0);
+      }
+    }
+
+    if (device->clean_dnd->dnd_on)
+    {
+      lv_obj_set_style_bg_color(device->clean_dnd->dnd_btn, OPEN_STATE_DEFAULT_COLOR, 0);
+      if (device->clean_dnd->dnd_label != NULL)
+      {
+        lv_obj_set_style_img_recolor(device->clean_dnd->dnd_label, DND_ON_COLOR, 0);
+        lv_obj_set_style_img_recolor_opa(device->clean_dnd->dnd_label, LV_OPA_COVER, 0);
+      }
+    }
+    else
+    {
+      lv_obj_set_style_bg_color(device->clean_dnd->dnd_btn, CLOSE_STATE_DEFAULT_COLOR, 0);
+      if (device->clean_dnd->dnd_label != NULL)
+      {
+        lv_obj_set_style_img_recolor(device->clean_dnd->dnd_label, OPEN_STATE_DEFAULT_COLOR, 0);
+        lv_obj_set_style_img_recolor_opa(device->clean_dnd->dnd_label, LV_OPA_COVER, 0);
+      }
+    }
+  }
+
+  bsp_display_unlock();
+}
+
+static void contral_page_clean_dnd_imgbtn_click_cb(lv_event_t *e)
+{
+  lv_obj_t *switch_imgbtn = lv_event_get_target(e);
+  if (switch_imgbtn == NULL)
+  {
+    return;
+  }
+
+  device_node_t *device = lv_event_get_user_data(e);
+  if (device == NULL || device->clean_dnd == NULL || device->device_type != DEVICE_TYPE_CLEAN_DND)
+  {
+    return;
+  }
+
+  if (switch_imgbtn == device->clean_dnd->clean_btn)
+  {
+    bool next_clean_on = !device->clean_dnd->clean_on;
+    device->clean_dnd->clean_on = next_clean_on;
+    if (next_clean_on)
+    {
+      device->clean_dnd->dnd_on = false;
+    }
+  }
+  else if (switch_imgbtn == device->clean_dnd->dnd_btn)
+  {
+    bool next_dnd_on = !device->clean_dnd->dnd_on;
+    device->clean_dnd->dnd_on = next_dnd_on;
+    if (next_dnd_on)
+    {
+      device->clean_dnd->clean_on = false;
+    }
+  }
+
+  update_clean_dnd_status(device);
 }
 
 /*********************************************控制页面滑块值变化事件回调函数************************************************/
@@ -1422,7 +1541,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
     temp->next = newNode;
   }
   // 控制页面部件
-  lv_obj_t *contral_page_obj = lv_tileview_add_tile(contral_page_tileview, page_index, 0, LV_DIR_HOR); // 创建平铺视图子页面
+  lv_obj_t *contral_page_obj = lv_tileview_add_tile(contral_page_tileview, page_index - 1, 0, LV_DIR_HOR); // 创建平铺视图子页面
   lv_obj_set_align(contral_page_obj, LV_ALIGN_BOTTOM_MID);
   lv_obj_set_style_border_width(contral_page_obj, 1, 0);
 
@@ -1589,7 +1708,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
 
         // 开关图标存放背景部件1
         lv_obj_t *switch_obj1 = lv_button_create(curtain_obj);
-        lv_obj_set_size(switch_obj1, (GRID_SIZE - 10), (GRID_SIZE - 10));
+        lv_obj_set_size(switch_obj1, 120, 120);
         lv_obj_set_style_radius(switch_obj1, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_bg_opa(switch_obj1, LV_OPA_COVER, 0);
         lv_obj_set_style_bg_color(switch_obj1, CLOSE_STATE_DEFAULT_COLOR, 0);
@@ -1608,7 +1727,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
 
         // 开关图标存放背景部件2
         lv_obj_t *switch_obj2 = lv_button_create(curtain_obj);
-        lv_obj_set_size(switch_obj2, (GRID_SIZE - 10), (GRID_SIZE - 10));
+        lv_obj_set_size(switch_obj2, 120, 120);
         lv_obj_set_style_radius(switch_obj2, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_bg_opa(switch_obj2, LV_OPA_COVER, 0);
         lv_obj_set_style_bg_color(switch_obj2, CLOSE_STATE_DEFAULT_COLOR, 0);
@@ -1627,39 +1746,114 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
 
         if (device->angle == 0)
         {
-          lv_obj_set_size(curtain_obj, 310, 150);
-          lv_obj_align(switch_obj1, LV_ALIGN_LEFT_MID, 3, 0);
-          lv_obj_align(switch_obj2, LV_ALIGN_RIGHT_MID, -3, 0);
+          lv_obj_set_size(curtain_obj, (GRID_SIZE * 2 + GRID_SPACING), GRID_SIZE);
           mark_grid_occupied(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied);
           lv_obj_set_grid_cell(curtain_obj, LV_GRID_ALIGN_CENTER, col, 2, LV_GRID_ALIGN_CENTER, row, 1);
         }
         else if (device->angle == 1)
         {
-          lv_obj_set_size(curtain_obj, 150, 310);
-          lv_obj_align(switch_obj1, LV_ALIGN_TOP_MID, 0, 3);
-          lv_obj_align(switch_obj2, LV_ALIGN_BOTTOM_MID, 0, -3);
+          lv_obj_set_size(curtain_obj, GRID_SIZE, (GRID_SIZE * 2 + GRID_SPACING));
           mark_grid_occupied(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied);
           lv_obj_set_grid_cell(curtain_obj, LV_GRID_ALIGN_CENTER, col, 1, LV_GRID_ALIGN_CENTER, row, 2);
         }
         else if (device->angle == 2)
         {
-          lv_obj_set_size(curtain_obj, 310, 150);
-          lv_obj_align(switch_obj2, LV_ALIGN_LEFT_MID, 3, 0);
-          lv_obj_align(switch_obj1, LV_ALIGN_RIGHT_MID, -3, 0);
+          lv_obj_set_size(curtain_obj, (GRID_SIZE * 2 + GRID_SPACING), GRID_SIZE);
           mark_grid_occupied(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied);
           lv_obj_set_grid_cell(curtain_obj, LV_GRID_ALIGN_CENTER, col - 1, 2, LV_GRID_ALIGN_CENTER, row, 1);
         }
         else if (device->angle == 3)
         {
-          lv_obj_set_size(curtain_obj, 150, 310);
-          lv_obj_align(switch_obj2, LV_ALIGN_TOP_MID, 0, 3);
-          lv_obj_align(switch_obj1, LV_ALIGN_BOTTOM_MID, 0, -3);
+          lv_obj_set_size(curtain_obj, GRID_SIZE, (GRID_SIZE * 2 + GRID_SPACING));
           mark_grid_occupied(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied);
           lv_obj_set_grid_cell(curtain_obj, LV_GRID_ALIGN_CENTER, col, 1, LV_GRID_ALIGN_CENTER, row - 1, 2);
         }
 
         device->curtain_switch->up_imgbtn = switch_obj1;   // 赋值窗帘上图标部件
         device->curtain_switch->down_imgbtn = switch_obj2; // 赋值窗帘下图标部件
+      }
+      else if (device->device_type == DEVICE_TYPE_CLEAN_DND)
+      {
+        if (!can_place_widget(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied))
+        {
+          printf("can not found local");
+          goto next_device;
+        }
+
+        lv_obj_t *clean_dnd_obj = lv_obj_create(show_page_obj);
+        lv_obj_set_style_bg_color(clean_dnd_obj, AREA_BG_COLOR, 0);
+        lv_obj_set_style_radius(clean_dnd_obj, 35, 0);
+        lv_obj_set_style_border_width(clean_dnd_obj, 0, 0);
+        lv_obj_remove_flag(clean_dnd_obj, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t *dnd_btn = lv_button_create(clean_dnd_obj);
+        lv_obj_set_size(dnd_btn, 120, 120);
+        lv_obj_set_style_radius(dnd_btn, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_opa(dnd_btn, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(dnd_btn, CLOSE_STATE_DEFAULT_COLOR, 0);
+        lv_obj_set_style_border_width(dnd_btn, 0, 0);
+        lv_obj_set_style_pad_all(dnd_btn, 0, 0);
+        disable_button_shadow(dnd_btn);
+        lv_obj_add_event_cb(dnd_btn, contral_page_clean_dnd_imgbtn_click_cb, LV_EVENT_CLICKED, device);
+
+        lv_obj_t *dnd_label = lv_image_create(dnd_btn);
+        lv_image_set_src(dnd_label, dnd_pic);
+        lv_obj_set_size(dnd_label, 60, 60);
+        lv_obj_center(dnd_label);
+
+        lv_obj_t *clean_btn = lv_button_create(clean_dnd_obj);
+        lv_obj_set_size(clean_btn, 120, 120);
+        lv_obj_set_style_radius(clean_btn, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_opa(clean_btn, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(clean_btn, CLOSE_STATE_DEFAULT_COLOR, 0);
+        lv_obj_set_style_border_width(clean_btn, 0, 0);
+        lv_obj_set_style_pad_all(clean_btn, 0, 0);
+        disable_button_shadow(clean_btn);
+        lv_obj_add_event_cb(clean_btn, contral_page_clean_dnd_imgbtn_click_cb, LV_EVENT_CLICKED, device);
+
+        lv_obj_t *clean_label = lv_image_create(clean_btn);
+        lv_image_set_src(clean_label, clean_pic);
+        lv_obj_set_size(clean_label, 60, 60);
+        lv_obj_center(clean_label);
+
+        if (device->angle == 0)
+        {
+          lv_obj_set_size(clean_dnd_obj, (GRID_SIZE * 2 + GRID_SPACING), GRID_SIZE);
+          lv_obj_align(dnd_btn, LV_ALIGN_LEFT_MID, 0, 0);
+          lv_obj_align(clean_btn, LV_ALIGN_RIGHT_MID, 0, 0);
+          mark_grid_occupied(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied);
+          lv_obj_set_grid_cell(clean_dnd_obj, LV_GRID_ALIGN_CENTER, col, 2, LV_GRID_ALIGN_CENTER, row, 1);
+        }
+        else if (device->angle == 1)
+        {
+          lv_obj_set_size(clean_dnd_obj, GRID_SIZE, (GRID_SIZE * 2 + GRID_SPACING));
+          lv_obj_align(dnd_btn, LV_ALIGN_TOP_MID, 0, 0);
+          lv_obj_align(clean_btn, LV_ALIGN_BOTTOM_MID, 0, 0);
+          mark_grid_occupied(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied);
+          lv_obj_set_grid_cell(clean_dnd_obj, LV_GRID_ALIGN_CENTER, col, 1, LV_GRID_ALIGN_CENTER, row, 2);
+        }
+        else if (device->angle == 2)
+        {
+          lv_obj_set_size(clean_dnd_obj, (GRID_SIZE * 2 + GRID_SPACING), GRID_SIZE);
+          lv_obj_align(dnd_btn, LV_ALIGN_RIGHT_MID, 0, 0);
+          lv_obj_align(clean_btn, LV_ALIGN_LEFT_MID, 0, 0);
+          mark_grid_occupied(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied);
+          lv_obj_set_grid_cell(clean_dnd_obj, LV_GRID_ALIGN_CENTER, col - 1, 2, LV_GRID_ALIGN_CENTER, row, 1);
+        }
+        else if (device->angle == 3)
+        {
+          lv_obj_set_size(clean_dnd_obj, GRID_SIZE, (GRID_SIZE * 2 + GRID_SPACING));
+          lv_obj_align(dnd_btn, LV_ALIGN_BOTTOM_MID, 0, 0);
+          lv_obj_align(clean_btn, LV_ALIGN_TOP_MID, 0, 0);
+          mark_grid_occupied(GRID_TYPE_1X2_OR_2X1, device->angle, row, col, grid_occupied);
+          lv_obj_set_grid_cell(clean_dnd_obj, LV_GRID_ALIGN_CENTER, col, 1, LV_GRID_ALIGN_CENTER, row - 1, 2);
+        }
+
+        device->clean_dnd->clean_btn = clean_btn;
+        device->clean_dnd->dnd_btn = dnd_btn;
+        device->clean_dnd->clean_label = clean_label;
+        device->clean_dnd->dnd_label = dnd_label;
+        update_clean_dnd_status(device);
       }
       else if (device->device_type == DEVICE_TYPE_BT_BOX)
       {
@@ -2009,6 +2203,24 @@ static void create_contral_page(void)
   device->angle = 3;
   device->dimmer_slider = (dimmer_slider_t *)add_dimmer_slider_node(power_pic);
 
+  device = add_deivce_node();
+  device->slot = 0x81;
+  device->gang = 0x01;
+  device->device_type = DEVICE_TYPE_CLEAN_DND;
+  device->page_index = 2;
+  device->show_index = 9;
+  device->angle = 0;
+  device->clean_dnd = (clean_dnd_t *)add_clean_dnd_node();
+
+  device = add_deivce_node();
+  device->slot = 0x81;
+  device->gang = 0x01;
+  device->device_type = DEVICE_TYPE_CLEAN_DND;
+  device->page_index = 2;
+  device->show_index = 12;
+  device->angle = 2;
+  device->clean_dnd = (clean_dnd_t *)add_clean_dnd_node();
+
   create_one_contral_page("Living Room", 1);
   create_one_contral_page("Media Room", 2);
   /*
@@ -2023,7 +2235,197 @@ static void create_contral_page(void)
   */
 }
 
+#define PHONE_NUMBER_MAX_LEN 24
+static char phone_number_buf[PHONE_NUMBER_MAX_LEN + 1] = {0};
+static lv_obj_t *phone_number_label = NULL;
+
+static void phone_update_number_label(void)
+{
+  if (phone_number_label == NULL)
+  {
+    return;
+  }
+
+  if (phone_number_buf[0] == '\0')
+  {
+    lv_label_set_text(phone_number_label, "Enter Number");
+    lv_obj_set_style_text_color(phone_number_label, lv_color_hex(0x666666), 0);
+  }
+  else
+  {
+    lv_label_set_text(phone_number_label, phone_number_buf);
+    lv_obj_set_style_text_color(phone_number_label, lv_color_white(), 0);
+  }
+}
+
+static void phone_keypad_btn_event_cb(lv_event_t *e)
+{
+  lv_event_code_t code = lv_event_get_code(e);
+  const char *key = (const char *)lv_event_get_user_data(e);
+  if (key == NULL)
+  {
+    return;
+  }
+
+  size_t len = strlen(phone_number_buf);
+
+  if (strcmp(key, "DEL") == 0 || strcmp(key, "BACKSPACE") == 0)
+  {
+    if (strcmp(key, "BACKSPACE") == 0 && code == LV_EVENT_LONG_PRESSED)
+    {
+      phone_number_buf[0] = '\0';
+    }
+    else if (len > 0)
+    {
+      phone_number_buf[len - 1] = '\0';
+    }
+  }
+  else if (strcmp(key, "CLR") == 0)
+  {
+    phone_number_buf[0] = '\0';
+  }
+  else if (strcmp(key, "CALL") == 0 || strcmp(key, "PHONE_CALL") == 0)
+  {
+    if (len > 0)
+    {
+      printf("Dialing: %s\n", phone_number_buf);
+    }
+  }
+  else if (strcmp(key, "CALL_SERVICE") == 0)
+  {
+    phone_number_buf[0] = '8';
+    phone_number_buf[1] = '8';
+    phone_number_buf[2] = '8';
+    phone_number_buf[3] = '8';
+    phone_number_buf[4] = '\0';
+  }
+  else
+  {
+    if (len < PHONE_NUMBER_MAX_LEN && len < sizeof(phone_number_buf) - 1)
+    {
+      phone_number_buf[len] = key[0];
+      phone_number_buf[len + 1] = '\0';
+    }
+  }
+
+  phone_update_number_label();
+}
+
+static void create_phone_page(void)
+{
+  lv_indev_t *indev = NULL;
+  while ((indev = lv_indev_get_next(indev)) != NULL)
+  {
+    lv_indev_set_long_press_time(indev, 1000);
+  }
+
+  lv_obj_t *page = lv_obj_create(lv_scr_act());
+  lv_obj_set_size(page, 720, 580);
+  lv_obj_align(page, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_bg_color(page, lv_color_black(), 0);
+  lv_obj_set_style_border_width(page, 0, 0);
+  lv_obj_set_style_pad_all(page, 0, 0);
+  lv_obj_remove_flag(page, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *number_box = lv_obj_create(page);
+  lv_obj_set_size(number_box, 700, 60);
+  lv_obj_align(number_box, LV_ALIGN_TOP_MID, 0, 16);
+  lv_obj_set_style_bg_opa(number_box, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(number_box, 0, 0);
+  lv_obj_set_style_pad_all(number_box, 0, 0);
+  lv_obj_remove_flag(number_box, LV_OBJ_FLAG_SCROLLABLE);
+
+  phone_number_label = lv_label_create(number_box);
+  lv_label_set_long_mode(phone_number_label, LV_LABEL_LONG_MODE_CLIP);
+  lv_obj_set_width(phone_number_label, 700);
+  lv_obj_set_height(phone_number_label, 56);
+  lv_obj_set_style_text_align(phone_number_label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(phone_number_label, &my_equalwidth_font48, 0);
+  lv_obj_center(phone_number_label);
+  phone_number_buf[0] = '\0';
+  phone_update_number_label();
+
+  lv_obj_t *dial_separator = lv_obj_create(page);
+  lv_obj_set_size(dial_separator, 700, 2);
+  lv_obj_align(dial_separator, LV_ALIGN_TOP_MID, 0, 84);
+  lv_obj_set_style_radius(dial_separator, 0, 0);
+  lv_obj_set_style_bg_color(dial_separator, lv_color_hex(0x3A3A3A), 0);
+  lv_obj_set_style_border_width(dial_separator, 0, 0);
+  lv_obj_remove_flag(dial_separator, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *keypad = lv_obj_create(page);
+  lv_obj_set_size(keypad, 560, 432);
+  lv_obj_align(keypad, LV_ALIGN_TOP_MID, 0, 100);
+  lv_obj_set_style_bg_opa(keypad, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(keypad, 0, 0);
+  lv_obj_set_style_pad_all(keypad, 0, 0);
+  lv_obj_set_style_pad_row(keypad, 8, 0);
+  lv_obj_set_style_pad_column(keypad, 10, 0);
+  lv_obj_set_layout(keypad, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(keypad, LV_FLEX_FLOW_ROW_WRAP);
+  lv_obj_set_flex_align(keypad, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
+  lv_obj_remove_flag(keypad, LV_OBJ_FLAG_SCROLLABLE);
+
+  static const char *dial_keys[] = {
+      "1", "2", "3",
+      "4", "5", "6",
+      "7", "8", "9",
+      "*", "0", "#"};
+
+  for (uint8_t i = 0; i < sizeof(dial_keys) / sizeof(dial_keys[0]); i++)
+  {
+    lv_obj_t *btn = lv_button_create(keypad);
+    lv_obj_set_size(btn, 180, 80);
+    lv_obj_set_style_radius(btn, 20, 0);
+    lv_obj_set_style_bg_color(btn, CLOSE_STATE_DEFAULT_COLOR, 0);
+    lv_obj_set_style_border_width(btn, 0, 0);
+    disable_button_shadow(btn);
+    lv_obj_add_event_cb(btn, phone_keypad_btn_event_cb, LV_EVENT_CLICKED, (void *)dial_keys[i]);
+
+    lv_obj_t *label = lv_label_create(btn);
+    lv_label_set_text(label, dial_keys[i]);
+    lv_obj_set_style_text_font(label, &my_equalwidth_font48, 0);
+    lv_obj_set_style_text_color(label, lv_color_white(), 0);
+    lv_obj_center(label);
+  }
+
+  lv_obj_t *service_btn = lv_button_create(keypad);
+  lv_obj_set_size(service_btn, 180, 80);
+  lv_obj_set_style_radius(service_btn, 20, 0);
+  lv_obj_set_style_bg_color(service_btn, lv_color_hex(0xB00020), 0);
+  lv_obj_set_style_border_width(service_btn, 0, 0);
+  disable_button_shadow(service_btn);
+  lv_obj_add_event_cb(service_btn, phone_keypad_btn_event_cb, LV_EVENT_CLICKED, (void *)"CALL_SERVICE");
+  lv_obj_t *service_img = lv_image_create(service_btn);
+  lv_image_set_src(service_img, call_service_pic);
+  lv_obj_center(service_img);
+
+  lv_obj_t *phone_call_btn = lv_button_create(keypad);
+  lv_obj_set_size(phone_call_btn, 180, 80);
+  lv_obj_set_style_radius(phone_call_btn, 20, 0);
+  lv_obj_set_style_bg_color(phone_call_btn, lv_color_hex(0x1E8E3E), 0);
+  lv_obj_set_style_border_width(phone_call_btn, 0, 0);
+  disable_button_shadow(phone_call_btn);
+  lv_obj_add_event_cb(phone_call_btn, phone_keypad_btn_event_cb, LV_EVENT_CLICKED, (void *)"PHONE_CALL");
+  lv_obj_t *phone_call_img = lv_image_create(phone_call_btn);
+  lv_image_set_src(phone_call_img, phone_call_pic);
+  lv_obj_center(phone_call_img);
+
+  lv_obj_t *backspace_btn = lv_button_create(keypad);
+  lv_obj_set_size(backspace_btn, 180, 80);
+  lv_obj_set_style_radius(backspace_btn, 20, 0);
+  lv_obj_set_style_bg_color(backspace_btn, lv_color_hex(0x5A5A5A), 0);
+  lv_obj_set_style_border_width(backspace_btn, 0, 0);
+  disable_button_shadow(backspace_btn);
+  lv_obj_add_event_cb(backspace_btn, phone_keypad_btn_event_cb, LV_EVENT_CLICKED, (void *)"BACKSPACE");
+  lv_obj_add_event_cb(backspace_btn, phone_keypad_btn_event_cb, LV_EVENT_LONG_PRESSED, (void *)"BACKSPACE");
+  lv_obj_t *backspace_img = lv_image_create(backspace_btn);
+  lv_image_set_src(backspace_img, backspace_pic);
+  lv_obj_align(backspace_img, LV_ALIGN_CENTER, -5, 0);
+}
+
 static void ui_init(void)
 {
   create_contral_page();
+  // create_phone_page();
 }
