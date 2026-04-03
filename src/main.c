@@ -248,6 +248,13 @@ typedef struct thermostat
   lv_obj_t *rh_label;
 } thermostat_t;
 
+typedef struct bt_box
+{
+  uint8_t volume;
+  bool bt; // bt or tv
+
+} bt_box_t;
+
 typedef struct device_node
 {
   uint8_t macAddress[6];
@@ -463,6 +470,38 @@ static void set_circle_switch_style(lv_obj_t *switch_btn, lv_obj_t *switch_img, 
     lv_obj_set_style_img_recolor_opa(switch_img, LV_OPA_COVER, LV_STATE_DEFAULT);
   }
   lv_obj_set_style_bg_color(switch_btn, bg_color, LV_STATE_DEFAULT);
+}
+
+static void disable_button_shadow(lv_obj_t *btn)
+{
+  if (btn == NULL)
+  {
+    return;
+  }
+  lv_obj_set_style_shadow_width(btn, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_shadow_opa(btn, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_shadow_offset_x(btn, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_shadow_offset_y(btn, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+  lv_obj_set_style_shadow_width(btn, 0, LV_PART_MAIN | LV_STATE_PRESSED);
+  lv_obj_set_style_shadow_opa(btn, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_PRESSED);
+  lv_obj_set_style_shadow_offset_x(btn, 0, LV_PART_MAIN | LV_STATE_PRESSED);
+  lv_obj_set_style_shadow_offset_y(btn, 0, LV_PART_MAIN | LV_STATE_PRESSED);
+
+  lv_obj_set_style_shadow_width(btn, 0, LV_PART_MAIN | LV_STATE_CHECKED);
+  lv_obj_set_style_shadow_opa(btn, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_CHECKED);
+  lv_obj_set_style_shadow_offset_x(btn, 0, LV_PART_MAIN | LV_STATE_CHECKED);
+  lv_obj_set_style_shadow_offset_y(btn, 0, LV_PART_MAIN | LV_STATE_CHECKED);
+
+  lv_obj_set_style_shadow_width(btn, 0, LV_PART_MAIN | LV_STATE_FOCUSED);
+  lv_obj_set_style_shadow_opa(btn, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_FOCUSED);
+  lv_obj_set_style_shadow_offset_x(btn, 0, LV_PART_MAIN | LV_STATE_FOCUSED);
+  lv_obj_set_style_shadow_offset_y(btn, 0, LV_PART_MAIN | LV_STATE_FOCUSED);
+
+  lv_obj_set_style_shadow_width(btn, 0, LV_PART_MAIN | LV_STATE_DISABLED);
+  lv_obj_set_style_shadow_opa(btn, LV_OPA_TRANSP, LV_PART_MAIN | LV_STATE_DISABLED);
+  lv_obj_set_style_shadow_offset_x(btn, 0, LV_PART_MAIN | LV_STATE_DISABLED);
+  lv_obj_set_style_shadow_offset_y(btn, 0, LV_PART_MAIN | LV_STATE_DISABLED);
 }
 
 /*********************************************控制页面图标开关状态切换事件回调函数************************************************/
@@ -1342,6 +1381,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
         lv_obj_set_style_bg_color(switch_obj, CLOSE_STATE_DEFAULT_COLOR, 0);
         lv_obj_set_style_border_width(switch_obj, 0, 0);
         lv_obj_set_style_pad_all(switch_obj, 0, 0);
+        disable_button_shadow(switch_obj);
         lv_obj_remove_flag(switch_obj, LV_OBJ_FLAG_SCROLLABLE);
         // 开关图标
         lv_obj_t *switch_icon = lv_image_create(switch_obj);
@@ -1439,6 +1479,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
         lv_obj_set_style_bg_color(switch_obj1, CLOSE_STATE_DEFAULT_COLOR, 0);
         lv_obj_set_style_border_width(switch_obj1, 0, 0);
         lv_obj_set_style_pad_all(switch_obj1, 0, 0);
+        disable_button_shadow(switch_obj1);
 
         // 开关图标1
         lv_obj_t *switch_icon1 = lv_image_create(switch_obj1);
@@ -1457,6 +1498,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
         lv_obj_set_style_bg_color(switch_obj2, CLOSE_STATE_DEFAULT_COLOR, 0);
         lv_obj_set_style_border_width(switch_obj2, 0, 0);
         lv_obj_set_style_pad_all(switch_obj2, 0, 0);
+        disable_button_shadow(switch_obj2);
 
         // 开关图标2
         lv_obj_t *switch_icon2 = lv_image_create(switch_obj2);
@@ -1580,6 +1622,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
         lv_obj_set_style_bg_color(device->thermostat->power_imgbtn, CLOSE_STATE_DEFAULT_COLOR, 0);
         lv_obj_set_style_border_width(device->thermostat->power_imgbtn, 0, 0);
         lv_obj_set_style_pad_all(device->thermostat->power_imgbtn, 0, 0);
+        disable_button_shadow(device->thermostat->power_imgbtn);
         device->thermostat->power_img = lv_image_create(device->thermostat->power_imgbtn);
         lv_obj_center(device->thermostat->power_img);
         lv_obj_set_style_img_recolor(device->thermostat->power_img, OPEN_STATE_DEFAULT_COLOR, 0);
@@ -1592,6 +1635,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
         lv_obj_set_style_bg_color(device->thermostat->mode_imgbtn, CLOSE_STATE_DEFAULT_COLOR, 0);
         lv_obj_set_style_border_width(device->thermostat->mode_imgbtn, 0, 0);
         lv_obj_set_style_pad_all(device->thermostat->mode_imgbtn, 0, 0);
+        disable_button_shadow(device->thermostat->mode_imgbtn);
         device->thermostat->mode_img = lv_image_create(device->thermostat->mode_imgbtn);
         lv_obj_center(device->thermostat->mode_img);
         // lv_obj_set_style_img_recolor(device->thermostat->mode_img, OPEN_STATE_DEFAULT_COLOR, 0);
@@ -1604,6 +1648,7 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
         lv_obj_set_style_bg_color(device->thermostat->fan_imgbtn, CLOSE_STATE_DEFAULT_COLOR, 0);
         lv_obj_set_style_border_width(device->thermostat->fan_imgbtn, 0, 0);
         lv_obj_set_style_pad_all(device->thermostat->fan_imgbtn, 0, 0);
+        disable_button_shadow(device->thermostat->fan_imgbtn);
         device->thermostat->fan_img = lv_image_create(device->thermostat->fan_imgbtn);
         lv_obj_center(device->thermostat->fan_img);
         // lv_obj_set_style_img_recolor(device->thermostat->fan_img, OPEN_STATE_DEFAULT_COLOR, 0);
