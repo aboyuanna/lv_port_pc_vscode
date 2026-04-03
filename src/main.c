@@ -43,7 +43,7 @@ LV_FONT_DECLARE(my_equalwidth_font20);
 // LV_FONT_DECLARE(my_equalwidth_font24);
 LV_FONT_DECLARE(my_equalwidth_font32);
 LV_FONT_DECLARE(my_equalwidth_font48);
-// LV_FONT_DECLARE(my_equalwidth_font64);
+LV_FONT_DECLARE(my_equalwidth_font64);
 LV_FONT_DECLARE(equalwidth_128);
 LV_FONT_DECLARE(equalwidth_48);
 
@@ -119,8 +119,11 @@ static const char *fan3_pic = IMG_SRC("fan3.png");
 static const char *fanA_pic = IMG_SRC("fanA.png");
 static const char *heating_pic = IMG_SRC("heating.png");
 static const char *humidity_pic = IMG_SRC("humidity.png");
+static const char *bluetooth_pic = IMG_SRC("bluetooth.png");
 static const char *power_pic = IMG_SRC("power.png");
 static const char *temperature_pic = IMG_SRC("temperature.png");
+static const char *tv_pic = IMG_SRC("tv.png");
+static const char *volume_pic = IMG_SRC("volume.png");
 static const char *wind_big_pic = IMG_SRC("wind_big.png");
 
 static void ble_slave_cmd_post_to_eventLoop(uint8_t *cmd, uint8_t len, uint32_t event)
@@ -185,6 +188,7 @@ enum
   DEVICE_TYPE_CURTAIN_SWITCH,
   DEVICE_TYPE_CURTAIN_SLIDER,
   DEVICE_TYPE_THERMOSTAT,
+  DEVICE_TYPE_BT_BOX,
 };
 
 // 图标开关
@@ -251,8 +255,13 @@ typedef struct thermostat
 typedef struct bt_box
 {
   uint8_t volume;
-  bool bt; // bt or tv
+  bool tv; // tv or bluetooth
+  char password[5];
 
+  lv_obj_t *volume_slider;
+  lv_obj_t *source_btn;
+  lv_obj_t *source_img;
+  lv_obj_t *password_label;
 } bt_box_t;
 
 typedef struct device_node
@@ -272,6 +281,7 @@ typedef struct device_node
     dimmer_slider_t *dimmer_slider;
     curtain_switch_t *curtain_switch;
     thermostat_t *thermostat;
+    bt_box_t *bt_box;
   };
   struct device_node *next; // 链表后继
 } device_node_t;
@@ -455,6 +465,13 @@ static thermostat_t *add_thermostat_node(void)
 {
   thermostat_t *node = (thermostat_t *)malloc(sizeof(thermostat_t));
   memset(node, 0, sizeof(thermostat_t));
+  return node;
+}
+
+static bt_box_t *add_bt_box_node(void)
+{
+  bt_box_t *node = (bt_box_t *)malloc(sizeof(bt_box_t));
+  memset(node, 0, sizeof(bt_box_t));
   return node;
 }
 
@@ -729,6 +746,80 @@ static void contral_page_slider_value_change_cb(lv_event_t *e)
     cmd[16] = device->dimmer_slider->status;
     ble_slave_cmd_post_to_eventLoop(cmd, 17, EVENT_CMD_FROM_APP);
   }
+}
+
+/*********************************************控制页面蓝牙盒子状态切换事件回调函数************************************************/
+static void update_bt_box_status(device_node_t *device)
+{
+  if (device == NULL || device->bt_box == NULL)
+  {
+    return;
+  }
+
+  bsp_display_lock(0);
+
+  if (device->bt_box->volume_slider != NULL)
+  {
+    lv_slider_set_value(device->bt_box->volume_slider, device->bt_box->volume, LV_ANIM_OFF);
+  }
+
+  if (device->bt_box->password_label != NULL)
+  {
+    if (device->bt_box->password[0] == 0 || device->bt_box->password[1] == 0 || device->bt_box->password[2] == 0 || device->bt_box->password[3] == 0)
+    {
+      lv_label_set_text(device->bt_box->password_label, "----");
+    }
+    else
+    {
+      lv_label_set_text_fmt(device->bt_box->password_label, "%c%c%c%c",
+                            device->bt_box->password[0],
+                            device->bt_box->password[1],
+                            device->bt_box->password[2],
+                            device->bt_box->password[3]);
+    }
+  }
+
+  if (device->bt_box->source_img != NULL)
+  {
+    lv_image_set_src(device->bt_box->source_img, device->bt_box->tv ? bluetooth_pic : tv_pic);
+  }
+
+  bsp_display_unlock();
+}
+
+static void contral_page_bt_slider_value_change_cb(lv_event_t *e)
+{
+  lv_obj_t *slider = lv_event_get_target(e);
+  device_node_t *device = lv_event_get_user_data(e);
+  if (slider == NULL ||
+      device == NULL ||
+      device->bt_box == NULL ||
+      device->device_type != DEVICE_TYPE_BT_BOX)
+  {
+    return;
+  }
+
+  device->bt_box->volume = lv_slider_get_value(slider);
+}
+
+static void contral_page_bt_imgbtn_click_cb(lv_event_t *e)
+{
+  lv_obj_t *switch_imgbtn = lv_event_get_target(e);
+  if (switch_imgbtn == NULL)
+  {
+    return;
+  }
+
+  device_node_t *device = lv_event_get_user_data(e);
+  if (device == NULL ||
+      device->bt_box == NULL ||
+      device->device_type != DEVICE_TYPE_BT_BOX)
+  {
+    return;
+  }
+
+  device->bt_box->tv = !device->bt_box->tv;
+  update_bt_box_status(device);
 }
 
 /*********************************************控制页面温控器状态切换事件回调函数************************************************/
@@ -1213,6 +1304,17 @@ static bool can_place_widget(uint8_t grid, uint8_t angle, uint8_t start_row, uin
              !grid_occupied[start_row - 1][start_col];
     }
   }
+  else if (grid == 4) // 占用4格
+  {
+    if (start_row + 1 >= CONTROL_WIDGET_ROWS || start_col + 1 >= CONTROL_WIDGET_COLS)
+    {
+      return false;
+    }
+    return !grid_occupied[start_row][start_col] &&
+           !grid_occupied[start_row][start_col + 1] &&
+           !grid_occupied[start_row + 1][start_col] &&
+           !grid_occupied[start_row + 1][start_col + 1];
+  }
   else if (grid == 6) // 占用6格
   {
     if (start_row + 1 >= CONTROL_WIDGET_ROWS || start_col + 2 >= CONTROL_WIDGET_COLS)
@@ -1267,6 +1369,12 @@ static void mark_grid_occupied(uint8_t grid, uint8_t angle, int start_row, int s
       grid_occupied[start_row - 1][start_col] = true;
       break;
     }
+    break;
+  case 4:
+    grid_occupied[start_row][start_col] = true;
+    grid_occupied[start_row][start_col + 1] = true;
+    grid_occupied[start_row + 1][start_col] = true;
+    grid_occupied[start_row + 1][start_col + 1] = true;
     break;
   case 6:
     grid_occupied[start_row][start_col] = true;
@@ -1545,6 +1653,90 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
         device->curtain_switch->up_imgbtn = switch_obj1;   // 赋值窗帘上图标部件
         device->curtain_switch->down_imgbtn = switch_obj2; // 赋值窗帘下图标部件
       }
+      else if (device->device_type == DEVICE_TYPE_BT_BOX)
+      {
+        if (device->bt_box == NULL)
+        {
+          goto next_device;
+        }
+        if (!can_place_widget(4, device->angle, row, col, grid_occupied))
+        {
+          printf("can not found local");
+          goto next_device;
+        }
+
+        lv_obj_t *bt_box = lv_obj_create(show_page_obj);
+        lv_obj_set_size(bt_box, (GRID_SIZE * 2 + GRID_SPACING), (GRID_SIZE * 2 + GRID_SPACING));
+        lv_obj_set_style_bg_color(bt_box, AREA_BG_COLOR, 0);
+        lv_obj_set_style_radius(bt_box, 35, 0);
+        lv_obj_set_style_border_width(bt_box, 0, 0);
+        lv_obj_remove_flag(bt_box, LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_coord_t bt_slider_w = (GRID_SIZE * 2 - GRID_SPACING);
+        lv_coord_t bt_slider_h = (GRID_SIZE - GRID_SPACING);
+
+        lv_obj_t *volume_slider = lv_slider_create(bt_box);
+        lv_obj_set_size(volume_slider, bt_slider_w, bt_slider_h);
+        lv_obj_align(volume_slider, LV_ALIGN_BOTTOM_MID, 0, 0);
+        lv_obj_set_style_radius(volume_slider, 35, LV_PART_MAIN);
+        lv_obj_set_style_radius(volume_slider, 35, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(volume_slider, CLOSE_STATE_DEFAULT_COLOR, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(volume_slider, OPEN_STATE_DEFAULT_COLOR, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_opa(volume_slider, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(volume_slider, LV_OPA_COVER, LV_PART_INDICATOR);
+        lv_obj_remove_style(volume_slider, NULL, LV_PART_KNOB);
+        lv_slider_set_range(volume_slider, 0, 100);
+        lv_obj_remove_flag(volume_slider, LV_OBJ_FLAG_GESTURE_BUBBLE);
+        lv_obj_add_event_cb(volume_slider, contral_page_bt_slider_value_change_cb, LV_EVENT_RELEASED, device);
+
+        lv_obj_t *volume_img = lv_image_create(volume_slider);
+        lv_obj_set_size(volume_img, 64, 64);
+        lv_image_set_src(volume_img, volume_pic);
+        lv_obj_align(volume_img, LV_ALIGN_CENTER, -100, 0);
+
+        lv_obj_t *info_row = lv_obj_create(bt_box);
+        lv_obj_set_size(info_row, bt_slider_w, bt_slider_h);
+        lv_obj_align(info_row, LV_ALIGN_TOP_MID, 0, -10);
+        lv_obj_set_style_bg_opa(info_row, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(info_row, 0, 0);
+        lv_obj_set_style_pad_left(info_row, 0, 0);
+        lv_obj_set_style_pad_right(info_row, 0, 0);
+        lv_obj_set_style_pad_top(info_row, 0, 0);
+        lv_obj_set_style_pad_bottom(info_row, 0, 0);
+        lv_obj_remove_flag(info_row, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_layout(info_row, LV_LAYOUT_FLEX);
+        lv_obj_set_flex_flow(info_row, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(info_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+        lv_obj_t *source_btn = lv_button_create(info_row);
+        lv_obj_set_size(source_btn, 110, 110);
+        lv_obj_align(source_btn, LV_ALIGN_LEFT_MID, 0, 0);
+        lv_obj_set_style_radius(source_btn, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_opa(source_btn, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(source_btn, CLOSE_STATE_DEFAULT_COLOR, 0);
+        lv_obj_set_style_border_width(source_btn, 0, 0);
+        lv_obj_set_style_pad_all(source_btn, 0, 0);
+        disable_button_shadow(source_btn);
+        lv_obj_add_event_cb(source_btn, contral_page_bt_imgbtn_click_cb, LV_EVENT_CLICKED, device);
+
+        lv_obj_t *source_img = lv_image_create(source_btn);
+        lv_obj_center(source_img);
+
+        lv_obj_t *password_label = lv_label_create(info_row);
+        lv_obj_align(password_label, LV_ALIGN_RIGHT_MID, 0, 0);
+        // lv_obj_set_style_translate_y(password_label, 10, 0);
+        lv_obj_set_style_text_font(password_label, &my_equalwidth_font64, 0);
+        lv_obj_set_style_text_color(password_label, lv_color_white(), 0);
+
+        device->bt_box->volume_slider = volume_slider;
+        device->bt_box->source_btn = source_btn;
+        device->bt_box->source_img = source_img;
+        device->bt_box->password_label = password_label;
+        update_bt_box_status(device);
+
+        mark_grid_occupied(4, device->angle, row, col, grid_occupied);
+        lv_obj_set_grid_cell(bt_box, LV_GRID_ALIGN_CENTER, col, 2, LV_GRID_ALIGN_CENTER, row, 2);
+      }
       else if (device->device_type == DEVICE_TYPE_THERMOSTAT)
       {
         if (!can_place_widget(6, device->angle, row, col, grid_occupied))
@@ -1786,7 +1978,17 @@ static void create_contral_page(void)
   device->angle = 0;
   device->img_switch = (img_switch_t *)add_img_switch_node(power_pic);
 
+  device = add_deivce_node();
+  device->slot = 0x96;
+  device->gang = 0x01;
+  device->device_type = DEVICE_TYPE_BT_BOX;
+  device->page_index = 2;
+  device->show_index = 1;
+  device->angle = 0;
+  device->bt_box = (bt_box_t *)add_bt_box_node();
+
   create_one_contral_page("Living Room", 0);
+  create_one_contral_page("Media Room", 1);
   /*
   if (contral_page_tileview)
   {
