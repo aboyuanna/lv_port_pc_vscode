@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #ifdef _MSC_VER
 #include <Windows.h>
 #else
@@ -40,7 +41,7 @@
 
 // LV_FONT_DECLARE(my_equalwidth_font16);
 LV_FONT_DECLARE(my_equalwidth_font20);
-// LV_FONT_DECLARE(my_equalwidth_font24);
+LV_FONT_DECLARE(my_equalwidth_font24);
 // LV_FONT_DECLARE(my_equalwidth_font32);
 LV_FONT_DECLARE(my_equalwidth_font48);
 LV_FONT_DECLARE(my_equalwidth_font64);
@@ -120,10 +121,17 @@ static const char *fanA_pic = IMG_SRC("fanA.png");
 static const char *heating_pic = IMG_SRC("heating.png");
 static const char *humidity_pic = IMG_SRC("humidity.png");
 static const char *bluetooth_pic = IMG_SRC("bluetooth.png");
-static const char *answer_pic = IMG_SRC("answer.png");
-static const char *call_service_pic = IMG_SRC("call_service .png");
-static const char *phone_call_pic = IMG_SRC("phone_call.png");
+static const char *sip_call_pic = IMG_SRC("sip_call.png");
+static const char *room_service_pic = IMG_SRC("room_service.png");
+static const char *call_pic = IMG_SRC("call.png");
+static const char *hangup_pic = IMG_SRC("hangup.png");
+static const char *microphone_on_pic = IMG_SRC("microphone_on.png");
+static const char *microphone_off_pic = IMG_SRC("microphone_off.png");
+static const char *dial_pic = IMG_SRC("dial.png");
+static const char *speaker_on_pic = IMG_SRC("speaker_on.png");
+static const char *speaker_off_pic = IMG_SRC("speaker_off.png");
 static const char *backspace_pic = IMG_SRC("backspace.png");
+static const char *back_pic = IMG_SRC("back.png");
 static const char *clean_pic = IMG_SRC("clean.png");
 static const char *power_pic = IMG_SRC("power.png");
 static const char *temperature_pic = IMG_SRC("temperature.png");
@@ -1887,10 +1895,11 @@ static void create_one_contral_page(const char *page_name, uint8_t page_index)
         lv_obj_remove_flag(volume_slider, LV_OBJ_FLAG_GESTURE_BUBBLE);
         lv_obj_add_event_cb(volume_slider, contral_page_bt_slider_value_change_cb, LV_EVENT_RELEASED, device);
 
-        lv_obj_t *volume_img = lv_image_create(volume_slider);
-        lv_obj_set_size(volume_img, 64, 64);
-        lv_image_set_src(volume_img, volume_pic);
-        lv_obj_align(volume_img, LV_ALIGN_LEFT_MID, 5, 0);
+        lv_obj_t *volume_icon = lv_label_create(volume_slider);
+        lv_obj_set_style_text_font(volume_icon, &lv_font_montserrat_36, 0);
+        lv_label_set_text(volume_icon, LV_SYMBOL_AUDIO);
+        lv_obj_set_style_text_color(volume_icon, lv_color_white(), 0);
+        lv_obj_align(volume_icon, LV_ALIGN_LEFT_MID, 10, 0);
 
         lv_obj_t *info_row = lv_obj_create(bt_box);
         lv_obj_set_size(info_row, bt_slider_w, bt_slider_h);
@@ -2235,18 +2244,601 @@ static void create_contral_page(void)
   */
 }
 
-#define PHONE_NUMBER_MAX_LEN 24
+#define PHONE_NUMBER_MAX_LEN 31
+#define PHONE_DIAL_PANEL_WIDTH 560
+#define PHONE_DIAL_IDLE_BACK_MS 5000
 static char phone_number_buf[PHONE_NUMBER_MAX_LEN + 1] = {0};
+static size_t phone_number_len = 0;
 static lv_obj_t *phone_number_label = NULL;
+static lv_obj_t *phone_number_box = NULL;
+static lv_obj_t *phone_home_page = NULL;
+static lv_obj_t *phone_dial_page = NULL;
+static lv_obj_t *phone_call_page = NULL;
+static lv_obj_t *phone_call_number_label = NULL;
+static lv_obj_t *phone_answer_page = NULL;
+static lv_obj_t *phone_answer_number_label = NULL;
+static lv_obj_t *phone_connected_page = NULL;
+static lv_obj_t *phone_connected_number_label = NULL;
+static lv_obj_t *phone_connected_duration_label = NULL;
+static lv_obj_t *phone_connected_volume_slider = NULL;
+static lv_obj_t *phone_connected_volume_value_label = NULL;
+static lv_obj_t *phone_connected_mic_img = NULL;
+static lv_obj_t *phone_connected_speaker_img = NULL;
+static lv_obj_t *phone_connected_dial_panel = NULL;
+static lv_obj_t *phone_connected_dial_text_box = NULL;
+static lv_obj_t *phone_connected_dial_label = NULL;
+static lv_timer_t *phone_dial_idle_timer = NULL;
+static lv_timer_t *phone_connect_timer = NULL;
+static lv_timer_t *phone_connected_duration_timer = NULL;
+static uint32_t phone_connected_elapsed_sec = 0;
+static bool phone_connected_mic_on = true;
+static bool phone_connected_speaker_on = true;
+static char phone_connected_dial_buf[PHONE_NUMBER_MAX_LEN + 1] = {0};
+static size_t phone_connected_dial_len = 0;
+static char phone_active_number[PHONE_NUMBER_MAX_LEN + 1] = {0};
 
-static void phone_update_number_label(void)
+static void phone_create_home_page(void);
+static void phone_create_dial_page(void);
+static void phone_create_call_page(const char *number);
+static void phone_create_answer_page(const char *number);
+static void phone_create_connected_page(const char *number);
+static void phone_update_number_label(void);
+static void phone_answer_btn_event_cb(lv_event_t *e);
+
+static bool phone_set_number(const char *text)
 {
-  if (phone_number_label == NULL)
+  if (text == NULL)
+  {
+    return false;
+  }
+
+  size_t text_len = strlen(text);
+  if (text_len > PHONE_NUMBER_MAX_LEN)
+  {
+    text_len = PHONE_NUMBER_MAX_LEN;
+  }
+
+  memcpy(phone_number_buf, text, text_len);
+  phone_number_buf[text_len] = '\0';
+  phone_number_len = text_len;
+  return true;
+}
+
+static bool phone_append_char(char ch)
+{
+  if (phone_number_len >= PHONE_NUMBER_MAX_LEN)
+  {
+    return false;
+  }
+
+  phone_number_buf[phone_number_len] = ch;
+  phone_number_len++;
+  phone_number_buf[phone_number_len] = '\0';
+  return true;
+}
+
+static void phone_clear_number(void)
+{
+  phone_number_buf[0] = '\0';
+  phone_number_len = 0;
+}
+
+static void phone_backspace_one(void)
+{
+  if (phone_number_len == 0)
   {
     return;
   }
 
-  if (phone_number_buf[0] == '\0')
+  phone_number_len--;
+  phone_number_buf[phone_number_len] = '\0';
+}
+
+static void phone_set_active_number(const char *number)
+{
+  if (number == NULL || number[0] == '\0')
+  {
+    phone_active_number[0] = '\0';
+    return;
+  }
+
+  lv_snprintf(phone_active_number, sizeof(phone_active_number), "%.*s", PHONE_NUMBER_MAX_LEN, number);
+}
+
+static const char *phone_get_active_number(void)
+{
+  return (phone_active_number[0] == '\0') ? "Unknown" : phone_active_number;
+}
+
+static void phone_set_number_label(lv_obj_t *label, const char *number)
+{
+  if (label == NULL)
+  {
+    return;
+  }
+
+  if (number != NULL && number[0] != '\0')
+  {
+    lv_label_set_text(label, number);
+    lv_obj_set_style_text_color(label, lv_color_white(), 0);
+  }
+  else
+  {
+    lv_label_set_text(label, "Unknown");
+    lv_obj_set_style_text_color(label, lv_color_hex(0x777777), 0);
+  }
+}
+
+static void phone_update_connected_duration_label(void)
+{
+  if (phone_connected_duration_label == NULL)
+  {
+    return;
+  }
+
+  uint32_t h = phone_connected_elapsed_sec / 3600U;
+  uint32_t m = (phone_connected_elapsed_sec % 3600U) / 60U;
+  uint32_t s = phone_connected_elapsed_sec % 60U;
+
+  char buf[16] = {0};
+  if (h > 0)
+  {
+    snprintf(buf, sizeof(buf), "%02u:%02u:%02u", (unsigned int)h, (unsigned int)m, (unsigned int)s);
+  }
+  else
+  {
+    snprintf(buf, sizeof(buf), "%02u:%02u", (unsigned int)m, (unsigned int)s);
+  }
+  lv_label_set_text(phone_connected_duration_label, buf);
+}
+
+static void phone_update_connected_volume_label(void)
+{
+  if (phone_connected_volume_slider == NULL || phone_connected_volume_value_label == NULL)
+  {
+    return;
+  }
+
+  char buf[8] = {0};
+  lv_snprintf(buf, sizeof(buf), "%d", (int)lv_slider_get_value(phone_connected_volume_slider));
+  lv_label_set_text(phone_connected_volume_value_label, buf);
+  lv_obj_align_to(phone_connected_volume_value_label, phone_connected_volume_slider, LV_ALIGN_OUT_TOP_MID, 0, -5);
+}
+
+static void phone_connected_volume_slider_event_cb(lv_event_t *e)
+{
+  (void)e;
+  phone_update_connected_volume_label();
+}
+
+static bool phone_connected_dial_append_char(char ch)
+{
+  if (phone_connected_dial_len >= PHONE_NUMBER_MAX_LEN)
+  {
+    return false;
+  }
+
+  phone_connected_dial_buf[phone_connected_dial_len] = ch;
+  phone_connected_dial_len++;
+  phone_connected_dial_buf[phone_connected_dial_len] = '\0';
+  return true;
+}
+
+static void phone_connected_dial_update_label(void)
+{
+  if (phone_connected_dial_label == NULL || phone_connected_dial_text_box == NULL)
+  {
+    return;
+  }
+
+  if (phone_connected_dial_len == 0 || phone_connected_dial_buf == NULL)
+  {
+    lv_label_set_text(phone_connected_dial_label, "");
+    lv_obj_set_style_text_color(phone_connected_dial_label, lv_color_hex(0x777777), 0);
+  }
+  else
+  {
+    lv_label_set_text(phone_connected_dial_label, phone_connected_dial_buf);
+    lv_obj_set_style_text_color(phone_connected_dial_label, lv_color_white(), 0);
+  }
+
+  lv_obj_update_layout(phone_connected_dial_text_box);
+  lv_coord_t box_w = lv_obj_get_width(phone_connected_dial_text_box);
+  lv_coord_t box_h = lv_obj_get_height(phone_connected_dial_text_box);
+  lv_coord_t text_w = lv_obj_get_width(phone_connected_dial_label);
+  lv_coord_t text_h = lv_obj_get_height(phone_connected_dial_label);
+  lv_obj_set_y(phone_connected_dial_label, (box_h - text_h) / 2 + 4);
+  lv_obj_set_x(phone_connected_dial_label, 0);
+
+  if (text_w <= box_w)
+  {
+    lv_obj_scroll_to_x(phone_connected_dial_text_box, 0, LV_ANIM_OFF);
+  }
+  else
+  {
+    lv_obj_scroll_to_x(phone_connected_dial_text_box, text_w - box_w, LV_ANIM_OFF);
+  }
+}
+
+static void phone_connected_dial_clear(void)
+{
+  phone_connected_dial_buf[0] = '\0';
+  phone_connected_dial_len = 0;
+  phone_connected_dial_update_label();
+}
+
+static void phone_connected_dial_hide(void)
+{
+  if (phone_connected_dial_panel != NULL)
+  {
+    lv_obj_add_flag(phone_connected_dial_panel, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+static void phone_connected_dial_toggle(void)
+{
+  if (phone_connected_dial_panel == NULL)
+  {
+    return;
+  }
+
+  if (lv_obj_has_flag(phone_connected_dial_panel, LV_OBJ_FLAG_HIDDEN))
+  {
+    lv_obj_remove_flag(phone_connected_dial_panel, LV_OBJ_FLAG_HIDDEN);
+  }
+  else
+  {
+    lv_obj_add_flag(phone_connected_dial_panel, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+static void phone_connected_dial_key_btn_event_cb(lv_event_t *e)
+{
+  lv_event_code_t code = lv_event_get_code(e);
+  const char *key = (const char *)lv_event_get_user_data(e);
+  if (key == NULL || key[0] == '\0')
+  {
+    return;
+  }
+
+  if (strcmp(key, "BACKSPACE") == 0)
+  {
+    if (code == LV_EVENT_LONG_PRESSED)
+    {
+      phone_connected_dial_clear();
+    }
+    else if (phone_connected_dial_len > 0)
+    {
+      phone_connected_dial_len--;
+      phone_connected_dial_buf[phone_connected_dial_len] = '\0';
+      phone_connected_dial_update_label();
+    }
+    return;
+  }
+
+  if (phone_connected_dial_len >= PHONE_NUMBER_MAX_LEN)
+  {
+    printf("Connected dial number limit reached: max %d bytes\n", PHONE_NUMBER_MAX_LEN);
+    return;
+  }
+
+  if (!phone_connected_dial_append_char(key[0]))
+  {
+    printf("Connected dial number limit reached: max %d bytes\n", PHONE_NUMBER_MAX_LEN);
+    return;
+  }
+
+  phone_connected_dial_update_label();
+}
+
+static void phone_stop_connect_timer(void)
+{
+  if (phone_connect_timer != NULL)
+  {
+    lv_timer_pause(phone_connect_timer);
+  }
+}
+
+static void phone_stop_connected_duration_timer(void)
+{
+  if (phone_connected_duration_timer != NULL)
+  {
+    lv_timer_pause(phone_connected_duration_timer);
+  }
+}
+
+static void phone_pause_dial_idle_timer(void)
+{
+  if (phone_dial_idle_timer != NULL)
+  {
+    lv_timer_pause(phone_dial_idle_timer);
+  }
+}
+
+static void phone_resume_dial_idle_timer(void)
+{
+  if (phone_dial_idle_timer != NULL)
+  {
+    lv_timer_reset(phone_dial_idle_timer);
+    lv_timer_resume(phone_dial_idle_timer);
+  }
+}
+
+static void phone_hide_all_pages(void)
+{
+  if (phone_home_page != NULL)
+  {
+    lv_obj_add_flag(phone_home_page, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (phone_dial_page != NULL)
+  {
+    lv_obj_add_flag(phone_dial_page, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (phone_call_page != NULL)
+  {
+    lv_obj_add_flag(phone_call_page, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (phone_answer_page != NULL)
+  {
+    lv_obj_add_flag(phone_answer_page, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (phone_connected_page != NULL)
+  {
+    lv_obj_add_flag(phone_connected_page, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+static void phone_connected_duration_timer_cb(lv_timer_t *timer)
+{
+  (void)timer;
+  phone_connected_elapsed_sec++;
+  phone_update_connected_duration_label();
+}
+
+static void phone_show_connected_page(const char *number)
+{
+  if (number != NULL)
+  {
+    phone_set_active_number(number);
+  }
+
+  phone_create_connected_page(phone_get_active_number());
+  if (phone_connected_page == NULL)
+  {
+    return;
+  }
+
+  phone_stop_connect_timer();
+  phone_pause_dial_idle_timer();
+
+  phone_connected_elapsed_sec = 0;
+  phone_update_connected_duration_label();
+  if (phone_connected_duration_timer != NULL)
+  {
+    lv_timer_set_period(phone_connected_duration_timer, 1000);
+    lv_timer_set_repeat_count(phone_connected_duration_timer, -1);
+    lv_timer_reset(phone_connected_duration_timer);
+    lv_timer_resume(phone_connected_duration_timer);
+  }
+
+  phone_hide_all_pages();
+  lv_obj_remove_flag(phone_connected_page, LV_OBJ_FLAG_HIDDEN);
+  phone_connected_dial_clear();
+  phone_connected_dial_hide();
+}
+
+static void phone_connect_timer_cb(lv_timer_t *timer)
+{
+  (void)timer;
+
+  if (phone_call_page == NULL)
+  {
+    return;
+  }
+
+  if (lv_obj_has_flag(phone_call_page, LV_OBJ_FLAG_HIDDEN))
+  {
+    return;
+  }
+
+  phone_show_connected_page(NULL);
+}
+
+static void phone_show_home_page(void)
+{
+  phone_create_home_page();
+  if (phone_home_page == NULL)
+  {
+    return;
+  }
+
+  phone_stop_connect_timer();
+  phone_stop_connected_duration_timer();
+  phone_pause_dial_idle_timer();
+  phone_connected_dial_hide();
+  phone_clear_number();
+  phone_update_number_label();
+  phone_hide_all_pages();
+  lv_obj_remove_flag(phone_home_page, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void phone_show_dial_page(void)
+{
+  phone_create_dial_page();
+  if (phone_dial_page == NULL)
+  {
+    return;
+  }
+
+  phone_stop_connect_timer();
+  phone_stop_connected_duration_timer();
+  phone_resume_dial_idle_timer();
+  phone_connected_dial_hide();
+  phone_hide_all_pages();
+  lv_obj_remove_flag(phone_dial_page, LV_OBJ_FLAG_HIDDEN);
+
+  lv_display_trigger_activity(NULL);
+}
+
+static void phone_show_call_page(const char *number)
+{
+  phone_set_active_number(number);
+  phone_create_call_page(phone_get_active_number());
+  if (phone_call_page == NULL)
+  {
+    return;
+  }
+
+  phone_stop_connected_duration_timer();
+  phone_pause_dial_idle_timer();
+  phone_connected_dial_hide();
+  phone_hide_all_pages();
+  lv_obj_remove_flag(phone_call_page, LV_OBJ_FLAG_HIDDEN);
+
+  if (phone_connect_timer != NULL)
+  {
+    lv_timer_set_period(phone_connect_timer, 1200);
+    lv_timer_set_repeat_count(phone_connect_timer, 1);
+    lv_timer_reset(phone_connect_timer);
+    lv_timer_resume(phone_connect_timer);
+  }
+}
+
+static void phone_show_answer_page(const char *number)
+{
+  phone_set_active_number(number);
+  phone_create_answer_page(phone_get_active_number());
+  if (phone_answer_page == NULL)
+  {
+    return;
+  }
+
+  phone_stop_connect_timer();
+  phone_stop_connected_duration_timer();
+  phone_pause_dial_idle_timer();
+  phone_connected_dial_hide();
+  phone_hide_all_pages();
+  lv_obj_remove_flag(phone_answer_page, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void phone_cancel_call_btn_event_cb(lv_event_t *e)
+{
+  (void)e;
+  if (phone_active_number[0] != '\0')
+  {
+    printf("Call canceled: %s\n", phone_active_number);
+  }
+
+  phone_show_dial_page();
+}
+
+static void phone_answer_btn_event_cb(lv_event_t *e)
+{
+  const char *action = (const char *)lv_event_get_user_data(e);
+  if (action == NULL)
+  {
+    return;
+  }
+
+  if (strcmp(action, "ANSWER") == 0)
+  {
+    printf("Incoming call answered\n");
+    phone_show_connected_page(NULL);
+  }
+  else if (strcmp(action, "HANGUP") == 0)
+  {
+    if (phone_active_number[0] != '\0')
+    {
+      printf("Incoming call rejected: %s\n", phone_active_number);
+    }
+    phone_show_home_page();
+  }
+}
+
+static void phone_connected_btn_event_cb(lv_event_t *e)
+{
+  const char *action = (const char *)lv_event_get_user_data(e);
+  if (action == NULL)
+  {
+    return;
+  }
+
+  if (strcmp(action, "HANGUP") == 0)
+  {
+    phone_cancel_call_btn_event_cb(e);
+  }
+  else if (strcmp(action, "MIC") == 0)
+  {
+    phone_connected_mic_on = !phone_connected_mic_on;
+    if (phone_connected_mic_img != NULL)
+    {
+      lv_image_set_src(phone_connected_mic_img, phone_connected_mic_on ? microphone_on_pic : microphone_off_pic);
+    }
+  }
+  else if (strcmp(action, "DIAL") == 0)
+  {
+    phone_connected_dial_toggle();
+  }
+  else if (strcmp(action, "SPK") == 0)
+  {
+    phone_connected_speaker_on = !phone_connected_speaker_on;
+    if (phone_connected_speaker_img != NULL)
+    {
+      lv_image_set_src(phone_connected_speaker_img, phone_connected_speaker_on ? speaker_on_pic : speaker_off_pic);
+    }
+  }
+}
+
+static void phone_home_call_btn_event_cb(lv_event_t *e)
+{
+  lv_event_code_t code = lv_event_get_code(e);
+
+  if (code == LV_EVENT_LONG_PRESSED)
+  {
+    phone_show_answer_page("10086");
+    return;
+  }
+
+  if (code == LV_EVENT_SHORT_CLICKED)
+  {
+    phone_show_dial_page();
+  }
+}
+
+static void phone_dial_back_btn_event_cb(lv_event_t *e)
+{
+  (void)e;
+  phone_show_home_page();
+}
+
+static void phone_dial_idle_timer_cb(lv_timer_t *timer)
+{
+  (void)timer;
+
+  if (phone_dial_page == NULL || phone_home_page == NULL)
+  {
+    return;
+  }
+
+  if (lv_obj_has_flag(phone_dial_page, LV_OBJ_FLAG_HIDDEN))
+  {
+    return;
+  }
+
+  if (lv_display_get_inactive_time(NULL) >= PHONE_DIAL_IDLE_BACK_MS)
+  {
+    phone_show_home_page();
+  }
+}
+
+static void phone_update_number_label(void)
+{
+  if (phone_number_label == NULL || phone_number_box == NULL)
+  {
+    return;
+  }
+
+  if (phone_number_len == 0)
   {
     lv_label_set_text(phone_number_label, "Enter Number");
     lv_obj_set_style_text_color(phone_number_label, lv_color_hex(0x666666), 0);
@@ -2255,6 +2847,25 @@ static void phone_update_number_label(void)
   {
     lv_label_set_text(phone_number_label, phone_number_buf);
     lv_obj_set_style_text_color(phone_number_label, lv_color_white(), 0);
+  }
+
+  lv_obj_update_layout(phone_number_box);
+
+  lv_coord_t box_w = lv_obj_get_width(phone_number_box);
+  lv_coord_t box_h = lv_obj_get_height(phone_number_box);
+  lv_coord_t text_w = lv_obj_get_width(phone_number_label);
+  lv_coord_t text_h = lv_obj_get_height(phone_number_label);
+  lv_obj_set_y(phone_number_label, (box_h - text_h) / 2 + 5);
+
+  if (text_w <= box_w)
+  {
+    lv_obj_set_x(phone_number_label, (box_w - text_w) / 2);
+    lv_obj_scroll_to_x(phone_number_box, 0, LV_ANIM_OFF);
+  }
+  else
+  {
+    lv_obj_set_x(phone_number_label, 0);
+    lv_obj_scroll_to_x(phone_number_box, text_w - box_w, LV_ANIM_OFF);
   }
 }
 
@@ -2267,95 +2878,107 @@ static void phone_keypad_btn_event_cb(lv_event_t *e)
     return;
   }
 
-  size_t len = strlen(phone_number_buf);
-
   if (strcmp(key, "DEL") == 0 || strcmp(key, "BACKSPACE") == 0)
   {
     if (strcmp(key, "BACKSPACE") == 0 && code == LV_EVENT_LONG_PRESSED)
     {
-      phone_number_buf[0] = '\0';
+      phone_clear_number();
     }
-    else if (len > 0)
+    else
     {
-      phone_number_buf[len - 1] = '\0';
+      phone_backspace_one();
     }
   }
   else if (strcmp(key, "CLR") == 0)
   {
-    phone_number_buf[0] = '\0';
+    phone_clear_number();
   }
-  else if (strcmp(key, "CALL") == 0 || strcmp(key, "PHONE_CALL") == 0)
+  else if (strcmp(key, "CALL") == 0 || strcmp(key, "call") == 0)
   {
-    if (len > 0)
+    if (phone_number_len > 0)
     {
       printf("Dialing: %s\n", phone_number_buf);
+      phone_show_call_page(phone_number_buf);
     }
   }
   else if (strcmp(key, "CALL_SERVICE") == 0)
   {
-    phone_number_buf[0] = '8';
-    phone_number_buf[1] = '8';
-    phone_number_buf[2] = '8';
-    phone_number_buf[3] = '8';
-    phone_number_buf[4] = '\0';
+    phone_set_number("8888");
   }
   else
   {
-    if (len < PHONE_NUMBER_MAX_LEN && len < sizeof(phone_number_buf) - 1)
+    if (phone_number_len >= PHONE_NUMBER_MAX_LEN)
     {
-      phone_number_buf[len] = key[0];
-      phone_number_buf[len + 1] = '\0';
+      printf("Phone number limit reached: max %d bytes\n", PHONE_NUMBER_MAX_LEN);
+      phone_update_number_label();
+      return;
+    }
+
+    if (!phone_append_char(key[0]))
+    {
+      printf("Phone number limit reached: max %d bytes\n", PHONE_NUMBER_MAX_LEN);
     }
   }
 
   phone_update_number_label();
 }
 
-static void create_phone_page(void)
+static void phone_create_dial_objects(void)
 {
-  lv_indev_t *indev = NULL;
-  while ((indev = lv_indev_get_next(indev)) != NULL)
+  if (phone_dial_page != NULL)
   {
-    lv_indev_set_long_press_time(indev, 1000);
+    return;
   }
 
-  lv_obj_t *page = lv_obj_create(lv_scr_act());
-  lv_obj_set_size(page, 720, 580);
-  lv_obj_align(page, LV_ALIGN_BOTTOM_MID, 0, 0);
-  lv_obj_set_style_bg_color(page, lv_color_black(), 0);
-  lv_obj_set_style_border_width(page, 0, 0);
-  lv_obj_set_style_pad_all(page, 0, 0);
-  lv_obj_remove_flag(page, LV_OBJ_FLAG_SCROLLABLE);
+  phone_dial_page = lv_obj_create(lv_scr_act());
+  lv_obj_set_size(phone_dial_page, MAIN_PAGE_WIDTH, (MAIN_PAGE_HEIGHT - LV_STATUS_BAR_HEIGHT));
+  lv_obj_align(phone_dial_page, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_bg_color(phone_dial_page, lv_color_black(), 0);
+  lv_obj_set_style_border_width(phone_dial_page, 0, 0);
+  lv_obj_set_style_pad_all(phone_dial_page, 0, 0);
+  lv_obj_remove_flag(phone_dial_page, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t *number_box = lv_obj_create(page);
-  lv_obj_set_size(number_box, 700, 60);
-  lv_obj_align(number_box, LV_ALIGN_TOP_MID, 0, 16);
-  lv_obj_set_style_bg_opa(number_box, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(number_box, 0, 0);
-  lv_obj_set_style_pad_all(number_box, 0, 0);
-  lv_obj_remove_flag(number_box, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t *back_btn = lv_button_create(phone_dial_page);
+  lv_obj_set_size(back_btn, 80, 80);
+  lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 16, 16);
+  lv_obj_set_style_radius(back_btn, 35, 0);
+  lv_obj_set_style_bg_opa(back_btn, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(back_btn, 0, 0);
+  disable_button_shadow(back_btn);
+  lv_obj_add_event_cb(back_btn, phone_dial_back_btn_event_cb, LV_EVENT_CLICKED, NULL);
 
-  phone_number_label = lv_label_create(number_box);
+  lv_obj_t *back_img = lv_image_create(back_btn);
+  lv_image_set_src(back_img, back_pic);
+  lv_obj_center(back_img);
+
+  phone_number_box = lv_obj_create(phone_dial_page);
+  lv_obj_set_size(phone_number_box, PHONE_DIAL_PANEL_WIDTH, 60);
+  lv_obj_align(phone_number_box, LV_ALIGN_TOP_MID, 0, 76);
+  lv_obj_set_style_bg_opa(phone_number_box, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(phone_number_box, 0, 0);
+  lv_obj_set_style_pad_all(phone_number_box, 0, 0);
+  lv_obj_set_scrollbar_mode(phone_number_box, LV_SCROLLBAR_MODE_OFF);
+  lv_obj_set_scroll_dir(phone_number_box, LV_DIR_HOR);
+
+  phone_number_label = lv_label_create(phone_number_box);
   lv_label_set_long_mode(phone_number_label, LV_LABEL_LONG_MODE_CLIP);
-  lv_obj_set_width(phone_number_label, 700);
   lv_obj_set_height(phone_number_label, 56);
-  lv_obj_set_style_text_align(phone_number_label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_align(phone_number_label, LV_TEXT_ALIGN_LEFT, 0);
   lv_obj_set_style_text_font(phone_number_label, &my_equalwidth_font48, 0);
-  lv_obj_center(phone_number_label);
-  phone_number_buf[0] = '\0';
+  phone_clear_number();
   phone_update_number_label();
 
-  lv_obj_t *dial_separator = lv_obj_create(page);
-  lv_obj_set_size(dial_separator, 700, 2);
-  lv_obj_align(dial_separator, LV_ALIGN_TOP_MID, 0, 84);
+  lv_obj_t *dial_separator = lv_obj_create(phone_dial_page);
+  lv_obj_set_size(dial_separator, PHONE_DIAL_PANEL_WIDTH, 2);
+  lv_obj_align(dial_separator, LV_ALIGN_TOP_MID, 0, 144);
   lv_obj_set_style_radius(dial_separator, 0, 0);
   lv_obj_set_style_bg_color(dial_separator, lv_color_hex(0x3A3A3A), 0);
   lv_obj_set_style_border_width(dial_separator, 0, 0);
   lv_obj_remove_flag(dial_separator, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t *keypad = lv_obj_create(page);
-  lv_obj_set_size(keypad, 560, 432);
-  lv_obj_align(keypad, LV_ALIGN_TOP_MID, 0, 100);
+  lv_obj_t *keypad = lv_obj_create(phone_dial_page);
+  lv_obj_set_size(keypad, PHONE_DIAL_PANEL_WIDTH, 432);
+  lv_obj_align(keypad, LV_ALIGN_TOP_MID, 0, 160);
   lv_obj_set_style_bg_opa(keypad, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(keypad, 0, 0);
   lv_obj_set_style_pad_all(keypad, 0, 0);
@@ -2376,7 +2999,7 @@ static void create_phone_page(void)
   {
     lv_obj_t *btn = lv_button_create(keypad);
     lv_obj_set_size(btn, 180, 80);
-    lv_obj_set_style_radius(btn, 20, 0);
+    lv_obj_set_style_radius(btn, 35, 0);
     lv_obj_set_style_bg_color(btn, CLOSE_STATE_DEFAULT_COLOR, 0);
     lv_obj_set_style_border_width(btn, 0, 0);
     disable_button_shadow(btn);
@@ -2386,35 +3009,35 @@ static void create_phone_page(void)
     lv_label_set_text(label, dial_keys[i]);
     lv_obj_set_style_text_font(label, &my_equalwidth_font48, 0);
     lv_obj_set_style_text_color(label, lv_color_white(), 0);
-    lv_obj_center(label);
+    lv_obj_align(label, LV_ALIGN_CENTER, 0, 5);
   }
 
   lv_obj_t *service_btn = lv_button_create(keypad);
   lv_obj_set_size(service_btn, 180, 80);
-  lv_obj_set_style_radius(service_btn, 20, 0);
+  lv_obj_set_style_radius(service_btn, 35, 0);
   lv_obj_set_style_bg_color(service_btn, lv_color_hex(0xB00020), 0);
   lv_obj_set_style_border_width(service_btn, 0, 0);
   disable_button_shadow(service_btn);
   lv_obj_add_event_cb(service_btn, phone_keypad_btn_event_cb, LV_EVENT_CLICKED, (void *)"CALL_SERVICE");
   lv_obj_t *service_img = lv_image_create(service_btn);
-  lv_image_set_src(service_img, call_service_pic);
+  lv_image_set_src(service_img, room_service_pic);
   lv_obj_center(service_img);
 
   lv_obj_t *phone_call_btn = lv_button_create(keypad);
   lv_obj_set_size(phone_call_btn, 180, 80);
-  lv_obj_set_style_radius(phone_call_btn, 20, 0);
+  lv_obj_set_style_radius(phone_call_btn, 35, 0);
   lv_obj_set_style_bg_color(phone_call_btn, lv_color_hex(0x1E8E3E), 0);
   lv_obj_set_style_border_width(phone_call_btn, 0, 0);
   disable_button_shadow(phone_call_btn);
-  lv_obj_add_event_cb(phone_call_btn, phone_keypad_btn_event_cb, LV_EVENT_CLICKED, (void *)"PHONE_CALL");
+  lv_obj_add_event_cb(phone_call_btn, phone_keypad_btn_event_cb, LV_EVENT_CLICKED, (void *)"call");
   lv_obj_t *phone_call_img = lv_image_create(phone_call_btn);
-  lv_image_set_src(phone_call_img, phone_call_pic);
+  lv_image_set_src(phone_call_img, call_pic);
   lv_obj_center(phone_call_img);
 
   lv_obj_t *backspace_btn = lv_button_create(keypad);
   lv_obj_set_size(backspace_btn, 180, 80);
-  lv_obj_set_style_radius(backspace_btn, 20, 0);
-  lv_obj_set_style_bg_color(backspace_btn, lv_color_hex(0x5A5A5A), 0);
+  lv_obj_set_style_radius(backspace_btn, 35, 0);
+  lv_obj_set_style_bg_color(backspace_btn, CLOSE_STATE_DEFAULT_COLOR, 0);
   lv_obj_set_style_border_width(backspace_btn, 0, 0);
   disable_button_shadow(backspace_btn);
   lv_obj_add_event_cb(backspace_btn, phone_keypad_btn_event_cb, LV_EVENT_CLICKED, (void *)"BACKSPACE");
@@ -2424,8 +3047,396 @@ static void create_phone_page(void)
   lv_obj_align(backspace_img, LV_ALIGN_CENTER, -5, 0);
 }
 
+static void phone_create_call_objects(void)
+{
+  if (phone_call_page != NULL)
+  {
+    return;
+  }
+
+  phone_call_page = lv_obj_create(lv_scr_act());
+  lv_obj_set_size(phone_call_page, MAIN_PAGE_WIDTH, (MAIN_PAGE_HEIGHT - LV_STATUS_BAR_HEIGHT));
+  lv_obj_align(phone_call_page, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_bg_color(phone_call_page, lv_color_black(), 0);
+  lv_obj_set_style_border_width(phone_call_page, 0, 0);
+  lv_obj_set_style_pad_all(phone_call_page, 0, 0);
+  lv_obj_remove_flag(phone_call_page, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *calling_number_box = lv_obj_create(phone_call_page);
+  lv_obj_set_size(calling_number_box, PHONE_DIAL_PANEL_WIDTH, 80);
+  lv_obj_align(calling_number_box, LV_ALIGN_TOP_MID, 0, 120);
+  lv_obj_set_style_bg_opa(calling_number_box, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(calling_number_box, 0, 0);
+  lv_obj_set_style_pad_all(calling_number_box, 0, 0);
+  lv_obj_remove_flag(calling_number_box, LV_OBJ_FLAG_SCROLLABLE);
+
+  phone_call_number_label = lv_label_create(calling_number_box);
+  lv_label_set_long_mode(phone_call_number_label, LV_LABEL_LONG_MODE_SCROLL_CIRCULAR);
+  lv_obj_set_width(phone_call_number_label, PHONE_DIAL_PANEL_WIDTH);
+  lv_obj_set_style_text_font(phone_call_number_label, &my_equalwidth_font64, 0);
+  lv_obj_set_style_text_align(phone_call_number_label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_center(phone_call_number_label);
+  phone_set_number_label(phone_call_number_label, NULL);
+
+  lv_obj_t *cancel_btn = lv_button_create(phone_call_page);
+  lv_obj_set_size(cancel_btn, 120, 120);
+  lv_obj_align(cancel_btn, LV_ALIGN_BOTTOM_MID, 0, -64);
+  lv_obj_set_style_radius(cancel_btn, 35, 0);
+  lv_obj_set_style_bg_color(cancel_btn, lv_color_hex(0xB00020), 0);
+  lv_obj_set_style_border_width(cancel_btn, 0, 0);
+  disable_button_shadow(cancel_btn);
+  lv_obj_add_event_cb(cancel_btn, phone_cancel_call_btn_event_cb, LV_EVENT_CLICKED, NULL);
+
+  lv_obj_t *cancel_img = lv_image_create(cancel_btn);
+  lv_image_set_src(cancel_img, hangup_pic);
+  lv_obj_center(cancel_img);
+}
+
+static void phone_create_answer_objects(void)
+{
+  if (phone_answer_page != NULL)
+  {
+    return;
+  }
+
+  phone_answer_page = lv_obj_create(lv_scr_act());
+  lv_obj_set_size(phone_answer_page, MAIN_PAGE_WIDTH, (MAIN_PAGE_HEIGHT - LV_STATUS_BAR_HEIGHT));
+  lv_obj_align(phone_answer_page, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_bg_color(phone_answer_page, lv_color_black(), 0);
+  lv_obj_set_style_border_width(phone_answer_page, 0, 0);
+  lv_obj_set_style_pad_all(phone_answer_page, 0, 0);
+  lv_obj_remove_flag(phone_answer_page, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *incoming_number_box = lv_obj_create(phone_answer_page);
+  lv_obj_set_size(incoming_number_box, PHONE_DIAL_PANEL_WIDTH, 80);
+  lv_obj_align(incoming_number_box, LV_ALIGN_TOP_MID, 0, 120);
+  lv_obj_set_style_bg_opa(incoming_number_box, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(incoming_number_box, 0, 0);
+  lv_obj_set_style_pad_all(incoming_number_box, 0, 0);
+  lv_obj_remove_flag(incoming_number_box, LV_OBJ_FLAG_SCROLLABLE);
+
+  phone_answer_number_label = lv_label_create(incoming_number_box);
+  lv_label_set_long_mode(phone_answer_number_label, LV_LABEL_LONG_MODE_SCROLL_CIRCULAR);
+  lv_obj_set_width(phone_answer_number_label, PHONE_DIAL_PANEL_WIDTH);
+  lv_obj_set_style_text_font(phone_answer_number_label, &my_equalwidth_font64, 0);
+  lv_obj_set_style_text_align(phone_answer_number_label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_center(phone_answer_number_label);
+  phone_set_number_label(phone_answer_number_label, NULL);
+
+  lv_obj_t *answer_btn = lv_button_create(phone_answer_page);
+  lv_obj_set_size(answer_btn, 120, 120);
+  lv_obj_align(answer_btn, LV_ALIGN_BOTTOM_MID, 120, -64);
+  lv_obj_set_style_radius(answer_btn, 35, 0);
+  lv_obj_set_style_bg_color(answer_btn, lv_color_hex(0x1E8E3E), 0);
+  lv_obj_set_style_border_width(answer_btn, 0, 0);
+  disable_button_shadow(answer_btn);
+  lv_obj_add_event_cb(answer_btn, phone_answer_btn_event_cb, LV_EVENT_CLICKED, (void *)"ANSWER");
+
+  lv_obj_t *answer_img = lv_image_create(answer_btn);
+  lv_image_set_src(answer_img, call_pic);
+  lv_obj_center(answer_img);
+
+  lv_obj_t *hangup_btn = lv_button_create(phone_answer_page);
+  lv_obj_set_size(hangup_btn, 120, 120);
+  lv_obj_align(hangup_btn, LV_ALIGN_BOTTOM_MID, -120, -64);
+  lv_obj_set_style_radius(hangup_btn, 35, 0);
+  lv_obj_set_style_bg_color(hangup_btn, lv_color_hex(0xB00020), 0);
+  lv_obj_set_style_border_width(hangup_btn, 0, 0);
+  disable_button_shadow(hangup_btn);
+  lv_obj_add_event_cb(hangup_btn, phone_answer_btn_event_cb, LV_EVENT_CLICKED, (void *)"HANGUP");
+
+  lv_obj_t *hangup_img = lv_image_create(hangup_btn);
+  lv_image_set_src(hangup_img, hangup_pic);
+  lv_obj_center(hangup_img);
+}
+
+static void phone_create_connected_objects(void)
+{
+  if (phone_connected_page != NULL)
+  {
+    return;
+  }
+
+  phone_connected_page = lv_obj_create(lv_scr_act());
+  lv_obj_set_size(phone_connected_page, MAIN_PAGE_WIDTH, (MAIN_PAGE_HEIGHT - LV_STATUS_BAR_HEIGHT));
+  lv_obj_align(phone_connected_page, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_bg_color(phone_connected_page, lv_color_black(), 0);
+  lv_obj_set_style_border_width(phone_connected_page, 0, 0);
+  lv_obj_set_style_pad_all(phone_connected_page, 0, 0);
+  lv_obj_remove_flag(phone_connected_page, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *connected_number_box = lv_obj_create(phone_connected_page);
+  lv_obj_set_size(connected_number_box, PHONE_DIAL_PANEL_WIDTH, 80);
+  lv_obj_align(connected_number_box, LV_ALIGN_TOP_MID, 0, 96);
+  lv_obj_set_style_bg_opa(connected_number_box, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(connected_number_box, 0, 0);
+  lv_obj_set_style_pad_all(connected_number_box, 0, 0);
+  lv_obj_remove_flag(connected_number_box, LV_OBJ_FLAG_SCROLLABLE);
+
+  phone_connected_number_label = lv_label_create(connected_number_box);
+  lv_label_set_long_mode(phone_connected_number_label, LV_LABEL_LONG_MODE_SCROLL_CIRCULAR);
+  lv_obj_set_width(phone_connected_number_label, PHONE_DIAL_PANEL_WIDTH);
+  lv_obj_set_style_text_font(phone_connected_number_label, &my_equalwidth_font64, 0);
+  lv_obj_set_style_text_align(phone_connected_number_label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_center(phone_connected_number_label);
+  phone_set_number_label(phone_connected_number_label, NULL);
+
+  phone_connected_duration_label = lv_label_create(phone_connected_page);
+  lv_label_set_text(phone_connected_duration_label, "00:00");
+  lv_obj_set_style_text_font(phone_connected_duration_label, &my_equalwidth_font48, 0);
+  lv_obj_set_style_text_color(phone_connected_duration_label, lv_color_hex(0xAFAFAF), 0);
+  lv_obj_align(phone_connected_duration_label, LV_ALIGN_TOP_MID, 0, 220);
+
+  phone_connected_volume_slider = NULL;
+  phone_connected_volume_value_label = NULL;
+  phone_connected_volume_slider = lv_slider_create(phone_connected_page);
+  lv_obj_set_size(phone_connected_volume_slider, 40, 300);
+  lv_obj_align(phone_connected_volume_slider, LV_ALIGN_RIGHT_MID, -20, -100);
+  lv_slider_set_range(phone_connected_volume_slider, 0, 100);
+  lv_slider_set_value(phone_connected_volume_slider, 60, LV_ANIM_OFF);
+  lv_obj_add_event_cb(phone_connected_volume_slider, phone_connected_volume_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+  lv_obj_set_style_bg_color(phone_connected_volume_slider, CLOSE_STATE_DEFAULT_COLOR, LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(phone_connected_volume_slider, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_set_style_radius(phone_connected_volume_slider, 20, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(phone_connected_volume_slider, OPEN_STATE_DEFAULT_COLOR, LV_PART_INDICATOR);
+  lv_obj_set_style_bg_opa(phone_connected_volume_slider, LV_OPA_COVER, LV_PART_INDICATOR);
+  lv_obj_set_style_radius(phone_connected_volume_slider, 20, LV_PART_INDICATOR);
+
+  lv_obj_set_style_bg_opa(phone_connected_volume_slider, LV_OPA_TRANSP, LV_PART_KNOB);
+  lv_obj_set_style_border_opa(phone_connected_volume_slider, LV_OPA_TRANSP, LV_PART_KNOB);
+  lv_obj_set_style_shadow_opa(phone_connected_volume_slider, LV_OPA_TRANSP, LV_PART_KNOB);
+  lv_obj_set_style_outline_opa(phone_connected_volume_slider, LV_OPA_TRANSP, LV_PART_KNOB);
+
+  lv_obj_t *connected_volume_icon = lv_label_create(phone_connected_volume_slider);
+  lv_obj_set_style_text_font(connected_volume_icon, &lv_font_montserrat_24, 0);
+  lv_label_set_text(connected_volume_icon, LV_SYMBOL_AUDIO);
+  lv_obj_set_style_text_color(connected_volume_icon, lv_color_white(), 0);
+  lv_obj_align(connected_volume_icon, LV_ALIGN_BOTTOM_MID, 0, -8);
+
+  phone_connected_volume_value_label = lv_label_create(phone_connected_page);
+  lv_obj_set_style_text_font(phone_connected_volume_value_label, &my_equalwidth_font24, 0);
+  lv_obj_set_style_text_color(phone_connected_volume_value_label, lv_color_white(), 0);
+  phone_update_connected_volume_label();
+
+  lv_obj_t *connected_action_row = lv_obj_create(phone_connected_page);
+  lv_obj_set_size(connected_action_row, 640, 140);
+  lv_obj_align(connected_action_row, LV_ALIGN_BOTTOM_MID, 0, -30);
+  lv_obj_set_style_bg_opa(connected_action_row, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(connected_action_row, 0, 0);
+  lv_obj_set_style_pad_all(connected_action_row, 0, 0);
+  lv_obj_set_style_pad_column(connected_action_row, 20, 0);
+  lv_obj_remove_flag(connected_action_row, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_layout(connected_action_row, LV_LAYOUT_FLEX);
+  lv_obj_set_flex_flow(connected_action_row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(connected_action_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  phone_connected_mic_on = true;
+  phone_connected_speaker_on = true;
+  phone_connected_mic_img = NULL;
+  phone_connected_speaker_img = NULL;
+
+  const char *connected_icons[4] = {microphone_on_pic, dial_pic, hangup_pic, speaker_on_pic};
+  const char *connected_actions[4] = {"MIC", "DIAL", "HANGUP", "SPK"};
+  for (uint8_t i = 0; i < 4; i++)
+  {
+    lv_obj_t *btn = lv_button_create(connected_action_row);
+    lv_obj_set_size(btn, 120, 120);
+    lv_obj_set_style_radius(btn, 35, 0);
+    lv_obj_set_style_bg_color(btn, (i == 2) ? lv_color_hex(0xB00020) : CLOSE_STATE_DEFAULT_COLOR, 0);
+    lv_obj_set_style_border_width(btn, 0, 0);
+    disable_button_shadow(btn);
+    lv_obj_add_event_cb(btn, phone_connected_btn_event_cb, LV_EVENT_CLICKED, (void *)connected_actions[i]);
+
+    lv_obj_t *img = lv_image_create(btn);
+    lv_image_set_src(img, connected_icons[i]);
+    lv_obj_center(img);
+    if (i == 0)
+    {
+      phone_connected_mic_img = img;
+    }
+    else if (i == 3)
+    {
+      phone_connected_speaker_img = img;
+    }
+  }
+
+  phone_connected_dial_panel = lv_obj_create(phone_connected_page);
+  lv_obj_set_size(phone_connected_dial_panel, PHONE_DIAL_PANEL_WIDTH, 450);
+  lv_obj_align(phone_connected_dial_panel, LV_ALIGN_TOP_MID, 0, 20);
+  lv_obj_set_style_bg_color(phone_connected_dial_panel, AREA_BG_COLOR, 0);
+  lv_obj_set_style_radius(phone_connected_dial_panel, 35, 0);
+  lv_obj_set_style_border_width(phone_connected_dial_panel, 0, 0);
+  lv_obj_set_style_pad_all(phone_connected_dial_panel, 0, 0);
+  lv_obj_remove_flag(phone_connected_dial_panel, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(phone_connected_dial_panel, LV_OBJ_FLAG_HIDDEN);
+
+  lv_obj_t *connected_dial_number_box = lv_obj_create(phone_connected_dial_panel);
+  lv_obj_set_size(connected_dial_number_box, PHONE_DIAL_PANEL_WIDTH - 20, 50);
+  lv_obj_align(connected_dial_number_box, LV_ALIGN_TOP_MID, 5, 15);
+  lv_obj_set_style_bg_opa(connected_dial_number_box, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(connected_dial_number_box, 0, 0);
+  lv_obj_set_style_border_side(connected_dial_number_box, LV_BORDER_SIDE_BOTTOM, 0);
+  lv_obj_set_style_pad_all(connected_dial_number_box, 0, 0);
+  lv_obj_remove_flag(connected_dial_number_box, LV_OBJ_FLAG_SCROLLABLE);
+
+  phone_connected_dial_text_box = lv_obj_create(connected_dial_number_box);
+  lv_obj_set_size(phone_connected_dial_text_box, PHONE_DIAL_PANEL_WIDTH - 120, 50);
+  lv_obj_align(phone_connected_dial_text_box, LV_ALIGN_LEFT_MID, 0, 0);
+  lv_obj_set_style_bg_opa(phone_connected_dial_text_box, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(phone_connected_dial_text_box, 0, 0);
+  lv_obj_set_style_pad_all(phone_connected_dial_text_box, 0, 0);
+  lv_obj_set_scrollbar_mode(phone_connected_dial_text_box, LV_SCROLLBAR_MODE_OFF);
+  lv_obj_set_scroll_dir(phone_connected_dial_text_box, LV_DIR_HOR);
+
+  phone_connected_dial_label = lv_label_create(phone_connected_dial_text_box);
+  lv_label_set_long_mode(phone_connected_dial_label, LV_LABEL_LONG_MODE_CLIP);
+  lv_obj_set_style_text_font(phone_connected_dial_label, &my_equalwidth_font48, 0);
+  lv_obj_set_style_text_align(phone_connected_dial_label, LV_TEXT_ALIGN_LEFT, 0);
+  phone_connected_dial_clear();
+
+  lv_obj_t *connected_dial_backspace_btn = lv_button_create(connected_dial_number_box);
+  lv_obj_set_size(connected_dial_backspace_btn, 72, 72);
+  lv_obj_align(connected_dial_backspace_btn, LV_ALIGN_RIGHT_MID, -10, 0);
+  lv_obj_set_style_radius(connected_dial_backspace_btn, 35, 0);
+  lv_obj_set_style_bg_opa(connected_dial_backspace_btn, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(connected_dial_backspace_btn, 0, 0);
+  disable_button_shadow(connected_dial_backspace_btn);
+  lv_obj_add_event_cb(connected_dial_backspace_btn, phone_connected_dial_key_btn_event_cb, LV_EVENT_CLICKED, (void *)"BACKSPACE");
+  lv_obj_add_event_cb(connected_dial_backspace_btn, phone_connected_dial_key_btn_event_cb, LV_EVENT_LONG_PRESSED, (void *)"BACKSPACE");
+  lv_obj_t *connected_dial_backspace_img = lv_image_create(connected_dial_backspace_btn);
+  lv_image_set_src(connected_dial_backspace_img, backspace_pic);
+  lv_obj_align(connected_dial_backspace_img, LV_ALIGN_CENTER, 0, 0);
+
+  lv_obj_t *connected_dial_keypad = lv_obj_create(phone_connected_dial_panel);
+  lv_obj_set_size(connected_dial_keypad, PHONE_DIAL_PANEL_WIDTH - 20, 350);
+  lv_obj_align(connected_dial_keypad, LV_ALIGN_BOTTOM_MID, 0, -8);
+  lv_obj_set_style_bg_opa(connected_dial_keypad, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(connected_dial_keypad, 0, 0);
+  lv_obj_set_style_pad_all(connected_dial_keypad, 0, 0);
+  lv_obj_set_style_pad_row(connected_dial_keypad, 10, 0);
+  lv_obj_set_style_pad_column(connected_dial_keypad, 10, 0);
+  static lv_coord_t connected_dial_col_dsc[] = {
+      173, 173, 173, LV_GRID_TEMPLATE_LAST};
+  static lv_coord_t connected_dial_row_dsc[] = {
+      80, 80, 80, 80, LV_GRID_TEMPLATE_LAST};
+  lv_obj_set_grid_dsc_array(connected_dial_keypad, connected_dial_col_dsc, connected_dial_row_dsc);
+  lv_obj_set_layout(connected_dial_keypad, LV_LAYOUT_GRID);
+  lv_obj_remove_flag(connected_dial_keypad, LV_OBJ_FLAG_SCROLLABLE);
+
+  static const char *connected_dial_keys[] = {
+      "1", "2", "3",
+      "4", "5", "6",
+      "7", "8", "9",
+      "*", "0", "#"};
+
+  for (uint8_t i = 0; i < sizeof(connected_dial_keys) / sizeof(connected_dial_keys[0]); i++)
+  {
+    lv_obj_t *btn = lv_button_create(connected_dial_keypad);
+    lv_obj_set_size(btn, 160, 75);
+    lv_obj_set_style_radius(btn, 35, 0);
+    lv_obj_set_style_bg_color(btn, CLOSE_STATE_DEFAULT_COLOR, 0);
+    lv_obj_set_style_border_width(btn, 0, 0);
+    disable_button_shadow(btn);
+    lv_obj_add_event_cb(btn, phone_connected_dial_key_btn_event_cb, LV_EVENT_CLICKED, (void *)connected_dial_keys[i]);
+    lv_obj_set_grid_cell(btn, LV_GRID_ALIGN_STRETCH, i % 3, 1, LV_GRID_ALIGN_STRETCH, i / 3, 1);
+
+    lv_obj_t *label = lv_label_create(btn);
+    lv_label_set_text(label, connected_dial_keys[i]);
+    lv_obj_set_style_text_font(label, &my_equalwidth_font48, 0);
+    lv_obj_set_style_text_color(label, lv_color_white(), 0);
+    lv_obj_align(label, LV_ALIGN_CENTER, 0, 5);
+  }
+}
+
+static void phone_create_home_page(void)
+{
+  if (phone_home_page != NULL)
+  {
+    return;
+  }
+
+  phone_home_page = lv_obj_create(lv_scr_act());
+  lv_obj_set_size(phone_home_page, MAIN_PAGE_WIDTH, (MAIN_PAGE_HEIGHT - LV_STATUS_BAR_HEIGHT));
+  lv_obj_align(phone_home_page, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_bg_color(phone_home_page, lv_color_black(), 0);
+  lv_obj_set_style_border_width(phone_home_page, 0, 0);
+  lv_obj_set_style_pad_all(phone_home_page, 0, 0);
+  lv_obj_remove_flag(phone_home_page, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *home_call_btn = lv_button_create(phone_home_page);
+  lv_obj_set_size(home_call_btn, 150, 150);
+  lv_obj_align(home_call_btn, LV_ALIGN_CENTER, 0, 0);
+  lv_obj_set_style_radius(home_call_btn, 35, 0);
+  lv_obj_set_style_bg_color(home_call_btn, lv_color_hex(0x1E8E3E), 0);
+  lv_obj_set_style_border_width(home_call_btn, 0, 0);
+  disable_button_shadow(home_call_btn);
+  lv_obj_add_event_cb(home_call_btn, phone_home_call_btn_event_cb, LV_EVENT_SHORT_CLICKED, NULL);
+  lv_obj_add_event_cb(home_call_btn, phone_home_call_btn_event_cb, LV_EVENT_LONG_PRESSED, NULL);
+
+  lv_obj_t *home_call_img = lv_image_create(home_call_btn);
+  lv_image_set_src(home_call_img, sip_call_pic);
+  lv_obj_center(home_call_img);
+}
+
+static void phone_create_dial_page(void)
+{
+  if (phone_dial_page == NULL)
+  {
+    phone_create_dial_objects();
+  }
+
+  if (phone_dial_idle_timer == NULL)
+  {
+    phone_dial_idle_timer = lv_timer_create(phone_dial_idle_timer_cb, 1000, NULL);
+  }
+}
+
+static void phone_create_call_page(const char *number)
+{
+  phone_create_call_objects();
+  phone_set_number_label(phone_call_number_label, number);
+
+  if (phone_connect_timer == NULL)
+  {
+    phone_connect_timer = lv_timer_create(phone_connect_timer_cb, 1200, NULL);
+    lv_timer_set_auto_delete(phone_connect_timer, false);
+  }
+}
+
+static void phone_create_answer_page(const char *number)
+{
+  phone_create_answer_objects();
+  phone_set_number_label(phone_answer_number_label, number);
+}
+
+static void phone_create_connected_page(const char *number)
+{
+  phone_create_connected_objects();
+  phone_set_number_label(phone_connected_number_label, number);
+
+  if (phone_connected_duration_timer == NULL)
+  {
+    phone_connected_duration_timer = lv_timer_create(phone_connected_duration_timer_cb, 1000, NULL);
+  }
+}
+
+static void create_phone_page(void)
+{
+  lv_indev_t *indev = NULL;
+  while ((indev = lv_indev_get_next(indev)) != NULL)
+  {
+    lv_indev_set_long_press_time(indev, 1000);
+  }
+
+  phone_create_home_page();
+
+  phone_show_home_page();
+}
+
 static void ui_init(void)
 {
-  create_contral_page();
-  // create_phone_page();
+  // create_contral_page();
+  create_phone_page();
+  // phone_create_answer_page("");
 }

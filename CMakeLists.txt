@@ -72,6 +72,7 @@ set(MAIN_SOURCES
     src/img/equalwidth_128.c
     src/img/my_equalwidth_font48.c
     src/img/my_equalwidth_font64.c
+    src/img/my_equalwidth_font24.c
 )
 set(MAIN_LIBS lvgl lvgl::examples lvgl::demos lvgl::thorvg ${SDL2_LIBRARIES})
 
