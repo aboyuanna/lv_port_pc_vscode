@@ -35,15 +35,31 @@
 		"version": "2.0.0",
 		"tasks": [
 			{
-				"label": "Build",
+				"label": "Configure",
+				"type": "shell",
 				"command": "cmake",
 				"args": [
-					"--build", "${command:cmake.buildDirectory}"
+					"-S", "${workspaceFolder}",
+					"-B", "${workspaceFolder}/build",
+					"-G", "Ninja",
+					"-DCMAKE_BUILD_TYPE=Debug",
+					"-DSDL2_DIR=C:/SDL2-2.32.10/cmake"
+				],
+				"problemMatcher": []
+			},
+			{
+				"label": "Build",
+				"type": "shell",
+				"command": "cmake",
+				"args": [
+					"--build", "${workspaceFolder}/build"
 				],
 				"group": {
 					"kind": "build",
 					"isDefault": true
 				},
+				"dependsOn": "Configure",
+				"dependsOrder": "sequence",
 				"problemMatcher": {
 					"owner": "cpp",
 					"fileLocation": ["relative", "${workspaceFolder}"],
